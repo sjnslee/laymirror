@@ -11,11 +11,16 @@ export interface PluginApi {
   appVersion: string;
   docInfo(): DocInfo | null;
   showToast(message: string): void;
+  /** persisted per plugin, json-serialised into localStorage. */
   storage: {
     get(key: string): unknown;
     set(key: string, value: unknown): void;
   };
-  settings: Record<string, unknown>;
+  /** declared settings only — get plus a change subscription, not a record. */
+  settings: {
+    get(key: string): unknown;
+    onChanged(handler: (key: string) => void): () => void;
+  };
 }
 
 export interface Command {

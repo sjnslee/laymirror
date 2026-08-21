@@ -1,26 +1,29 @@
-// the state machine over off / lay. off means off: no stylesheet, nothing
-// injected, nothing watched.
+// the state machine over off / lay, plus the profile in force.
+// off means off: no stylesheet, nothing injected, nothing watched.
 
 import { applyStylesheet, removeStylesheet, toCss } from './render/css.js';
 import { DEFAULT_LAY } from './profile/defaults.js';
 import type { Profile } from './profile/profile.js';
 
 let active: string | null = null;
+let profile: Profile = DEFAULT_LAY;
 
-/** profiles are inlined for now; template ingest replaces this lookup. */
-function profileFor(id: string): Profile {
-  return { ...DEFAULT_LAY, id };
+export const currentProfile = (): Profile => profile;
+export const activeProfile = (): string | null => active;
+
+/** swapping the profile restyles in place when lay is already on. */
+export function setProfile(next: Profile): void {
+  profile = next;
+  if (active !== null) {
+    applyStylesheet(toCss(profile));
+    active = next.id;
+  }
 }
 
-export function activeProfile(): string | null {
-  return active;
-}
-
-/** idempotent: re-applying the same profile is a no-op, so a poll can call
- *  this freely. */
+/** idempotent, so a poll can call it freely. */
 export function enterLay(profileId: string): void {
   if (active === profileId) return;
-  applyStylesheet(toCss(profileFor(profileId)));
+  applyStylesheet(toCss(profile));
   active = profileId;
 }
 

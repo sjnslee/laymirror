@@ -6,18 +6,20 @@
 import { register, type PluginApi } from './host/plugin-api.js';
 import { hasFileApi, readFile, writeFile } from './host/electron.js';
 import { resolveDocPath } from './host/paths.js';
-import { zip, unzip, isDocx } from './docx/zip.js';
+import { zip, unzip, isDocx, type Parts } from './docx/zip.js';
 import { readMarker, writeMarker, clearMarker } from './docx/marker.js';
-import { syncTo, activeProfile } from './lay.js';
+import { syncTo, currentProfile, setProfile, activeProfile } from './lay.js';
+import { openPanel } from './ui/settings-panel.js';
+import type { Profile } from './profile/profile.js';
 
 const ID = 'laymirror';
-const DEFAULT_PROFILE = 'sample-lay';
+const PROFILE_KEY = 'profile';
 
 /** resolve the open document and hand its parts to `edit`, then write back.
  *  every failure path reports rather than half-writing. */
 async function withOpenDocx(
   api: PluginApi,
-  edit: (parts: Record<string, Uint8Array>, path: string) => string,
+  edit: (parts: Parts) => string,
 ): Promise<void> {
   if (!hasFileApi()) {
     api.showToast('laymirror needs the desktop app');
@@ -43,7 +45,7 @@ async function withOpenDocx(
     return;
   }
 
-  let parts;
+  let parts: Parts;
   try {
     parts = unzip(file.bytes);
   } catch {
@@ -56,9 +58,41 @@ async function withOpenDocx(
     return;
   }
 
-  const message = edit(parts, found.path);
+  const message = edit(parts);
   await writeFile(found.path, zip(parts));
   api.showToast(message);
+}
+
+async function readMarkerOf(api: PluginApi): Promise<string | null> {
+  const found = await resolveDocPath(api.docInfo());
+  if (found.kind !== 'ok') return null;
+  const file = await readFile(found.path);
+  if (!file) return null;
+  try {
+    return readMarker(unzip(file.bytes));
+  } catch {
+    return null;
+  }
+}
+
+async function toggleLay(api: PluginApi): Promise<void> {
+  await withOpenDocx(api, (parts) => {
+    if (readMarker(parts)) {
+      clearMarker(parts);
+      syncTo(null);
+      return 'lay formatting off for this document';
+    }
+    const profile = currentProfile();
+    writeMarker(parts, profile.id);
+    syncTo(profile.id);
+    return `lay formatting on — ${profile.name}`;
+  });
+}
+
+/** the profile outlives a restart; the marker only records which one. */
+function restoreProfile(api: PluginApi): void {
+  const stored = api.storage.get(PROFILE_KEY);
+  if (stored && typeof stored === 'object') setProfile(stored as Profile);
 }
 
 register({
@@ -67,40 +101,32 @@ register({
   apiVersion: 1,
   commands: [
     {
+      // the one worth putting on the ribbon — everything else is in here
+      id: `${ID}.panel`,
+      label: 'laymirror: open',
+      keywords: ['lay', 'debate', 'template', 'profile', 'settings'],
+      run: async (api) => {
+        restoreProfile(api);
+        const marker = await readMarkerOf(api);
+        syncTo(marker);
+        openPanel({
+          profile: currentProfile,
+          onProfile: (profile) => {
+            setProfile(profile);
+            api.storage.set(PROFILE_KEY, profile);
+          },
+          isLay: () => activeProfile() !== null,
+          onToggleLay: () => toggleLay(api),
+        });
+      },
+    },
+    {
       id: `${ID}.toggle-lay`,
       label: 'laymirror: mark this document as lay',
       keywords: ['lay', 'debate', 'parent', 'judge'],
-      run: (api) =>
-        withOpenDocx(api, (parts) => {
-          const current = readMarker(parts);
-          if (current) {
-            clearMarker(parts);
-            syncTo(null);
-            return 'lay formatting off for this document';
-          }
-          writeMarker(parts, DEFAULT_PROFILE);
-          syncTo(DEFAULT_PROFILE);
-          return `lay formatting on — profile "${DEFAULT_PROFILE}"`;
-        }),
-    },
-    {
-      id: `${ID}.status`,
-      label: 'laymirror: status',
-      keywords: ['lay', 'status'],
       run: async (api) => {
-        const found = await resolveDocPath(api.docInfo());
-        if (found.kind !== 'ok') {
-          api.showToast(`no single document resolved (${found.kind})`);
-          return;
-        }
-        const file = await readFile(found.path);
-        const marker = file ? readMarker(unzip(file.bytes)) : null;
-        syncTo(marker);
-        api.showToast(
-          marker
-            ? `lay document — profile "${marker}", styling ${activeProfile() ? 'on' : 'off'}`
-            : 'not a lay document',
-        );
+        restoreProfile(api);
+        await toggleLay(api);
       },
     },
   ],
