@@ -29,6 +29,27 @@ const SELECTOR: Record<BlockType | RunType, string> = {
   undertag_mark: '.pmd-undertag-run',
 };
 
+const BLOCK_TYPES: readonly BlockType[] = [
+  'pocket',
+  'hat',
+  'block',
+  'tag',
+  'analytic',
+  'undertag',
+  'cite_paragraph',
+  'card_body',
+];
+
+/** which text type an element in the editor is, by the class cardmirror puts
+ *  on it. read off the same table the stylesheet is built from, so the two
+ *  cannot disagree about what a card body is. */
+export function blockTypeOf(el: Element): BlockType {
+  for (const type of BLOCK_TYPES) {
+    if (el.matches(SELECTOR[type])) return type;
+  }
+  return 'paragraph';
+}
+
 const dxaToIn = (dxa: number) => `${(dxa / 1440).toFixed(4)}in`;
 
 function fontStack(spec: TypeSpec, profile: Profile): string | null {
