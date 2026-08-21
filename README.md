@@ -31,6 +31,9 @@ view draws word's dotted rule where each page will break.
   regardless — the drift is confined to the preview.
 - page view's header is built from the title, authors and team code typed
   into the panel. the printed `.docx` carries the template's own header.
+- garamond is on no mac and in no cardmirror bundle, so the plugin embeds
+  eb garamond and uses it when the real face is absent. it is the right
+  typeface but not metric-compatible, so lines can break differently.
 - a manual page break is the text `[page break]` alone on a line, because
   cardmirror's model has nowhere else to keep one.
 
