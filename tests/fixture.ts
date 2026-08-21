@@ -69,12 +69,15 @@ const STYLES =
   '<w:pPr><w:pageBreakBefore/><w:spacing w:after="60"/><w:jc w:val="center"/><w:outlineLvl w:val="0"/></w:pPr>' +
   '<w:rPr><w:rFonts w:ascii="Times New Roman" w:hAnsi="Times New Roman"/><w:b/><w:smallCaps/><w:sz w:val="40"/></w:rPr></w:style>' +
   // headings 2 and 3 use the theme major font and carry no page break
+  // heading 2 carries word's stock accent1 blue, as every real donor does —
+  // a themed colour, so it must not reach the profile
   '<w:style w:type="paragraph" w:styleId="Heading2"><w:name w:val="heading 2"/><w:basedOn w:val="Normal"/>' +
   '<w:pPr><w:keepNext/><w:keepLines/><w:spacing w:before="200"/><w:outlineLvl w:val="1"/></w:pPr>' +
-  '<w:rPr><w:rFonts w:asciiTheme="majorHAnsi"/><w:b/><w:color w:val="4F81BD"/><w:sz w:val="26"/></w:rPr></w:style>' +
+  '<w:rPr><w:rFonts w:asciiTheme="majorHAnsi"/><w:b/><w:color w:val="4F81BD" w:themeColor="accent1"/><w:sz w:val="26"/></w:rPr></w:style>' +
   '<w:style w:type="paragraph" w:styleId="Heading3"><w:name w:val="heading 3"/><w:basedOn w:val="Normal"/>' +
   '<w:pPr><w:keepNext/><w:keepLines/><w:spacing w:before="200"/><w:outlineLvl w:val="2"/></w:pPr>' +
-  '<w:rPr><w:rFonts w:asciiTheme="majorHAnsi"/><w:b/><w:color w:val="4F81BD"/></w:rPr></w:style>' +
+  // heading 3's colour is named outright, so it is a real choice and stays
+  '<w:rPr><w:rFonts w:asciiTheme="majorHAnsi"/><w:b/><w:color w:val="7A0019"/></w:rPr></w:style>' +
   // Tag inherits font and size from Normal
   '<w:style w:type="paragraph" w:customStyle="1" w:styleId="Tag"><w:name w:val="Tag"/><w:basedOn w:val="Normal"/>' +
   '<w:rPr><w:b/></w:rPr></w:style>' +
