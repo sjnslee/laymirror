@@ -12,7 +12,11 @@ import { readMarker, writeMarker, clearMarker } from './docx/marker.js';
 import { rewriteDocx } from './docx/rewrite.js';
 import type { DocMeta } from './docx/headers.js';
 import { syncTo, currentProfile, setProfile, activeProfile, useWatcher } from './lay.js';
-import { openPanel } from './ui/settings-panel.js';
+import { openPanel, type PanelAction } from './ui/settings-panel.js';
+import { openPageView, closePageView, isPageViewOpen } from './render/page-view.js';
+import { showDraftMarks, clearDraftMarks, draftMarksShown } from './render/draft-marks.js';
+import { printPageView } from './render/print.js';
+import { PAGE_BREAK_TEXT } from './profile/mapping.js';
 import type { Profile } from './profile/profile.js';
 
 const ID = 'laymirror';
@@ -121,6 +125,53 @@ function ensureWatcher(api: PluginApi): void {
   useWatcher(watcher);
 }
 
+function togglePageView(api: PluginApi): void {
+  if (isPageViewOpen()) {
+    closePageView();
+    return;
+  }
+  const shown = openPageView(currentProfile(), readMeta(api));
+  if (!shown) api.showToast('nothing to lay out yet');
+}
+
+function toggleDraftMarks(api: PluginApi): void {
+  if (draftMarksShown()) {
+    clearDraftMarks();
+    api.showToast('page break marks off');
+    return;
+  }
+  const breaks = showDraftMarks(currentProfile());
+  if (breaks === null) api.showToast('nothing to measure yet');
+  else api.showToast(`${breaks} page break${breaks === 1 ? '' : 's'}`);
+}
+
+/** the break has to go in as text: cardmirror's model has nowhere else to
+ *  keep one, and the rewrite turns it back into a real break on save. */
+function insertPageBreak(api: PluginApi): void {
+  const editor = document.querySelector<HTMLElement>('.ProseMirror');
+  editor?.focus();
+  if (editor && document.execCommand('insertText', false, PAGE_BREAK_TEXT)) {
+    api.showToast(`page break — it has to be the only text on its line`);
+    return;
+  }
+  api.showToast(`type ${PAGE_BREAK_TEXT} on a line of its own to break a page`);
+}
+
+function actionsFor(api: PluginApi): PanelAction[] {
+  return [
+    { label: 'page view', run: () => togglePageView(api) },
+    { label: 'page break marks', run: () => toggleDraftMarks(api) },
+    { label: 'insert page break', run: () => insertPageBreak(api) },
+    {
+      label: 'print',
+      run: () => {
+        if (!isPageViewOpen()) togglePageView(api);
+        if (isPageViewOpen()) printPageView();
+      },
+    },
+  ];
+}
+
 async function toggleLay(api: PluginApi): Promise<void> {
   let marker: string | null = null;
   const path = await withOpenDocx(api, (parts) => {
@@ -169,8 +220,24 @@ register({
           onMeta: (meta) => api.storage.set(META_KEY, meta),
           isLay: () => activeProfile() !== null,
           onToggleLay: () => toggleLay(api),
+          actions: actionsFor(api),
         });
       },
+    },
+    {
+      id: `${ID}.page-view`,
+      label: 'laymirror: page view',
+      keywords: ['page', 'print', 'layout', 'preview'],
+      run: (api) => {
+        restoreProfile(api);
+        togglePageView(api);
+      },
+    },
+    {
+      id: `${ID}.page-break`,
+      label: 'laymirror: insert page break',
+      keywords: ['page', 'break'],
+      run: (api) => insertPageBreak(api),
     },
     {
       id: `${ID}.toggle-lay`,

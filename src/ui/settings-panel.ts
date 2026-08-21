@@ -33,6 +33,11 @@ const ROWS: { type: BlockType | RunType; label: string }[] = [
   { type: 'pocket', label: 'pocket (rare in lay)' },
 ];
 
+export interface PanelAction {
+  label: string;
+  run(): void | Promise<void>;
+}
+
 export interface PanelHooks {
   profile(): Profile;
   onProfile(profile: Profile): void;
@@ -40,6 +45,9 @@ export interface PanelHooks {
   onMeta(meta: DocMeta): void;
   isLay(): boolean;
   onToggleLay(): void | Promise<void>;
+  /** page view, draft marks, print — reachable without a keyboard binding,
+   *  since cardmirror has no command palette to find them in. */
+  actions?: PanelAction[];
 }
 
 const META_FIELDS: { key: keyof DocMeta; label: string }[] = [
@@ -137,6 +145,17 @@ export function openPanel(hooks: PanelHooks): void {
       render();
     });
     dialog.append(toggle);
+
+    if (hooks.actions?.length) {
+      const row = el('div');
+      Object.assign(row.style, { display: 'flex', gap: '6px', flexWrap: 'wrap', marginTop: '8px' });
+      for (const action of hooks.actions) {
+        const button = el('button', undefined, action.label);
+        button.addEventListener('click', () => void action.run());
+        row.append(button);
+      }
+      dialog.append(row);
+    }
 
     // template picker
     dialog.append(el('h3', undefined, 'template'));
