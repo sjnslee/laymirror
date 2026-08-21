@@ -41,4 +41,24 @@ describe('lay state', () => {
     expect(activeProfile()).toBe('other');
     expect(document.querySelectorAll(`#${STYLE_ID}`)).toHaveLength(1);
   });
+
+  it('turns lay off even when the sheet outlived the module', () => {
+    // dev-loading the plugin again reruns this module with `active` back at
+    // null while the previous sheet is still in the head. off must still mean
+    // off, or the fonts never come back.
+    syncTo('sample-lay');
+    const orphan = styleEl()!;
+    leaveLay();
+    document.head.append(orphan);
+
+    syncTo(null);
+    expect(styleEl()).toBeNull();
+  });
+
+  it('restyles when the sheet went missing under it', () => {
+    syncTo('sample-lay');
+    styleEl()!.remove();
+    syncTo('sample-lay');
+    expect(styleEl()?.textContent).toContain('Times New Roman');
+  });
 });
