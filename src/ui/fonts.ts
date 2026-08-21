@@ -4,6 +4,7 @@
 // roman, but not palatino linotype or garamond — those are where our
 // pagination drifts from word's.
 
+import { fontStackFor } from '../render/css.js';
 import type { Profile } from '../profile/profile.js';
 
 const PROBE = 'mmmmmmmmmmlliWWWWWWWWWW';
@@ -28,4 +29,35 @@ export function missingFonts(profile: Profile): string[] {
   const families = new Set<string>();
   for (const spec of Object.values(profile.types)) if (spec.font) families.add(spec.font);
   return [...families].filter((f) => !isFontInstalled(f));
+}
+
+export interface Substitute {
+  label: string;
+  stack: string;
+}
+
+/** the faces cardmirror bundles, so they are there whatever the machine has.
+ *  the first three are metric-compatible with the family they name — same
+ *  advance widths, so a page breaks where word breaks it. the rest are not,
+ *  and are offered because a legible near-match beats a browser default. */
+export const SUBSTITUTES: readonly Substitute[] = [
+  { label: 'Tinos (matches Times New Roman)', stack: 'Tinos, "Times New Roman", serif' },
+  { label: 'Caladea (matches Cambria)', stack: 'Caladea, Cambria, serif' },
+  { label: 'Carlito (matches Calibri)', stack: 'Carlito, Calibri, sans-serif' },
+  { label: 'Arimo (matches Arial)', stack: 'Arimo, Arial, sans-serif' },
+  { label: 'Gelasio (matches Georgia)', stack: 'Gelasio, Georgia, serif' },
+  { label: 'Noto Serif', stack: '"Noto Serif", serif' },
+  { label: 'DejaVu Serif', stack: '"DejaVu Serif", serif' },
+  { label: 'Noto Sans', stack: '"Noto Sans", sans-serif' },
+  { label: 'Atkinson Hyperlegible', stack: '"Atkinson Hyperlegible", sans-serif' },
+];
+
+/** what a family will actually be drawn in, as the stylesheet decides it. */
+export const stackFor = fontStackFor;
+
+/** a copy of the profile with one family redirected. the substitution lives
+ *  on the profile because `toCss` reads it there — the screen and the file
+ *  stay one object. */
+export function substituteFont(profile: Profile, family: string, stack: string): Profile {
+  return { ...profile, fontFallbacks: { ...profile.fontFallbacks, [family]: stack } };
 }

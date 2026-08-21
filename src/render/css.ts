@@ -52,9 +52,15 @@ export function blockTypeOf(el: Element): BlockType {
 
 const dxaToIn = (dxa: number) => `${(dxa / 1440).toFixed(4)}in`;
 
+/** what a family is actually drawn in: the profile's substitute for it, or
+ *  the family itself. the single answer to that question — the settings ui
+ *  asks it too. */
+export function fontStackFor(profile: Profile, family: string): string {
+  return profile.fontFallbacks[family] ?? `"${family}", serif`;
+}
+
 function fontStack(spec: TypeSpec, profile: Profile): string | null {
-  if (!spec.font) return null;
-  return profile.fontFallbacks[spec.font] ?? `"${spec.font}", serif`;
+  return spec.font ? fontStackFor(profile, spec.font) : null;
 }
 
 function declarations(spec: TypeSpec, profile: Profile): string[] {

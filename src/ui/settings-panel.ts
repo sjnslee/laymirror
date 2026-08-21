@@ -10,7 +10,7 @@ import { validateMapping } from '../profile/mapping.js';
 import { DEFAULT_LAY } from '../profile/defaults.js';
 import type { BlockType, Profile, RunType } from '../profile/profile.js';
 import type { DocMeta } from '../docx/headers.js';
-import { missingFonts } from './fonts.js';
+import { missingFonts, stackFor, substituteFont, SUBSTITUTES } from './fonts.js';
 
 const PANEL_ID = 'laymirror-panel';
 
@@ -251,9 +251,43 @@ export function openPanel(hooks: PanelHooks): void {
         el(
           'p',
           undefined,
-          `not installed: ${absent.join(', ')} — a substitute is used, so page breaks may drift from word`,
+          'not installed here, so something else is drawn and page breaks may ' +
+            'drift from word. the printed file still asks for the real face.',
         ),
       );
+
+      for (const family of absent) {
+        const row = el('label');
+        Object.assign(row.style, { display: 'flex', gap: '8px', alignItems: 'center' });
+        row.append(el('span', undefined, family));
+
+        const choice = document.createElement('select');
+        choice.style.flex = '1';
+        const current = stackFor(profile, family);
+        for (const option of SUBSTITUTES) {
+          const item = document.createElement('option');
+          item.value = option.stack;
+          item.textContent = option.label;
+          item.selected = option.stack === current;
+          choice.append(item);
+        }
+        // whatever the donor already asked for, if it is not on the list
+        if (!SUBSTITUTES.some((option) => option.stack === current)) {
+          const item = document.createElement('option');
+          item.value = current;
+          item.textContent = 'as the template asks';
+          item.selected = true;
+          choice.prepend(item);
+        }
+
+        choice.addEventListener('change', () => {
+          hooks.onProfile(substituteFont(hooks.profile(), family, choice.value));
+          render();
+        });
+
+        row.append(choice);
+        dialog.append(row);
+      }
     }
   };
 

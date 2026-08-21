@@ -4,6 +4,7 @@ import { openPanel, closePanel } from '../src/ui/settings-panel.js';
 import { DEFAULT_LAY } from '../src/profile/defaults.js';
 import { zip } from '../src/docx/zip.js';
 import { makeDocx, makeTemplate } from './fixture.js';
+import { stubCanvas } from './dom.js';
 
 const meta = { title: '1AC', authors: '', teamCode: 'BCP 26-27' };
 
@@ -135,5 +136,33 @@ describe('template picker', () => {
     await vi.waitFor(() => expect(notice()).toContain('no donor style for'));
     expect(notice()).toContain('tag');
     expect(notice()).not.toContain('pocket');
+  });
+});
+
+describe('font substitution', () => {
+  afterEach(() => vi.restoreAllMocks());
+
+  it('offers a bundled face for a family the machine lacks', () => {
+    stubCanvas(['Times New Roman']);
+    const onProfile = vi.fn();
+    openPanel(hooks({ onProfile }));
+
+    const choice = document.querySelector('select') as HTMLSelectElement;
+    expect(choice).not.toBeNull();
+    expect(document.body.textContent).toContain('Times New Roman');
+
+    choice.value = 'Gelasio, Georgia, serif';
+    choice.dispatchEvent(new Event('change'));
+
+    expect(onProfile).toHaveBeenCalledWith(
+      expect.objectContaining({
+        fontFallbacks: expect.objectContaining({ 'Times New Roman': 'Gelasio, Georgia, serif' }),
+      }),
+    );
+  });
+
+  it('offers nothing when every family is present', () => {
+    openPanel(hooks());
+    expect(document.querySelector('select')).toBeNull();
   });
 });
