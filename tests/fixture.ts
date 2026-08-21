@@ -114,6 +114,27 @@ const SETTINGS_RELS =
   ' Target="file:////Users/someone/Library/Templates/Lay%20Cut%20Cards.dotx" TargetMode="External"/>' +
   '</Relationships>';
 
+const WML = 'http://schemas.openxmlformats.org/wordprocessingml/2006/main';
+
+/** the shape a real school header has: a team code word split into two runs
+ *  by its revision ids, a ptab, and a live page field. */
+const DONOR_HEADER =
+  '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+  `<w:hdr xmlns:w="${WML}">` +
+  '<w:p><w:r><w:t>Team </w:t></w:r><w:r><w:t>Code</w:t></w:r>' +
+  '<w:r><w:ptab w:relativeTo="margin" w:alignment="right" w:leader="none"/></w:r>' +
+  '<w:r><w:t xml:space="preserve">Page </w:t></w:r>' +
+  '<w:r><w:fldChar w:fldCharType="begin"/></w:r>' +
+  '<w:r><w:instrText xml:space="preserve"> PAGE </w:instrText></w:r>' +
+  '<w:r><w:fldChar w:fldCharType="separate"/></w:r>' +
+  '<w:r><w:t>1</w:t></w:r>' +
+  '<w:r><w:fldChar w:fldCharType="end"/></w:r>' +
+  '</w:p></w:hdr>';
+
+const DONOR_FOOTER =
+  '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+  `<w:ftr xmlns:w="${WML}"><w:p><w:r><w:t>lay</w:t></w:r></w:p></w:ftr>`;
+
 /** a donor template as raw docx bytes. */
 export function makeTemplate(): Uint8Array {
   const parts = makeDocx();
@@ -121,7 +142,7 @@ export function makeTemplate(): Uint8Array {
   writeText(parts, 'word/styles.xml', STYLES);
   writeText(parts, 'word/theme/theme1.xml', THEME('Calibri', 'Cambria'));
   writeText(parts, 'word/_rels/settings.xml.rels', SETTINGS_RELS);
-  writeText(parts, 'word/header1.xml', '<w:hdr><w:p><w:r><w:t>Team Code</w:t></w:r></w:p></w:hdr>');
-  writeText(parts, 'word/footer1.xml', '<w:ftr><w:p><w:r><w:t>Page</w:t></w:r></w:p></w:ftr>');
+  writeText(parts, 'word/header1.xml', DONOR_HEADER);
+  writeText(parts, 'word/footer1.xml', DONOR_FOOTER);
   return zip(parts);
 }
