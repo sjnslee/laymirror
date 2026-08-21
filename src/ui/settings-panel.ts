@@ -9,6 +9,7 @@ import { readTemplate } from '../profile/read-template.js';
 import { validateMapping } from '../profile/mapping.js';
 import { DEFAULT_LAY } from '../profile/defaults.js';
 import type { BlockType, Profile, RunType } from '../profile/profile.js';
+import type { DocMeta } from '../docx/headers.js';
 import { missingFonts } from './fonts.js';
 
 const PANEL_ID = 'laymirror-panel';
@@ -35,9 +36,17 @@ const ROWS: { type: BlockType | RunType; label: string }[] = [
 export interface PanelHooks {
   profile(): Profile;
   onProfile(profile: Profile): void;
+  meta(): DocMeta;
+  onMeta(meta: DocMeta): void;
   isLay(): boolean;
   onToggleLay(): void | Promise<void>;
 }
+
+const META_FIELDS: { key: keyof DocMeta; label: string }[] = [
+  { key: 'teamCode', label: 'team code' },
+  { key: 'title', label: 'title' },
+  { key: 'authors', label: 'authors' },
+];
 
 const el = <K extends keyof HTMLElementTagNameMap>(
   tag: K,
@@ -103,6 +112,7 @@ export function openPanel(hooks: PanelHooks): void {
   // however well the load went — so what happened has to live in panel state
   // rather than on the element or in a node appended beside it
   let notice: string | null = null;
+  let meta = hooks.meta();
 
   const render = () => {
     dialog.replaceChildren();
@@ -154,6 +164,35 @@ export function openPanel(hooks: PanelHooks): void {
     });
     dialog.append(picker);
     if (notice) dialog.append(el('p', undefined, notice));
+
+    // header
+    dialog.append(el('h3', undefined, 'header'));
+    const donor = profile.headerXml !== null;
+    dialog.append(
+      el(
+        'p',
+        undefined,
+        donor
+          ? 'this template brings its own header — these fill {{team}}, {{title}} and {{authors}} in it'
+          : 'no donor header, so laymirror builds one from these',
+      ),
+    );
+    for (const field of META_FIELDS) {
+      const row = el('label');
+      Object.assign(row.style, { display: 'flex', gap: '8px', alignItems: 'center' });
+      row.append(el('span', undefined, field.label));
+      const input = el('input');
+      input.type = 'text';
+      input.value = meta[field.key];
+      input.style.flex = '1';
+      // no re-render on input: rebuilding the dialog would take the caret
+      input.addEventListener('input', () => {
+        meta = { ...meta, [field.key]: input.value };
+        hooks.onMeta(meta);
+      });
+      row.append(input);
+      dialog.append(row);
+    }
 
     // mapping
     dialog.append(el('h3', undefined, 'text types'));

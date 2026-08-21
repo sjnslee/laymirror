@@ -5,9 +5,13 @@ import { DEFAULT_LAY } from '../src/profile/defaults.js';
 import { zip } from '../src/docx/zip.js';
 import { makeDocx, makeTemplate } from './fixture.js';
 
+const meta = { title: '1AC', authors: '', teamCode: 'BCP 26-27' };
+
 const hooks = (over: Partial<Parameters<typeof openPanel>[0]> = {}) => ({
   profile: () => DEFAULT_LAY,
   onProfile: vi.fn(),
+  meta: () => meta,
+  onMeta: vi.fn(),
   isLay: () => false,
   onToggleLay: vi.fn(),
   ...over,
@@ -71,6 +75,21 @@ describe('settings panel', () => {
     closePanel();
     expect(detach).toHaveBeenCalledWith('keydown', expect.any(Function), true);
     detach.mockRestore();
+  });
+
+  it('offers the header fields and reports them as typed', () => {
+    const onMeta = vi.fn();
+    openPanel(hooks({ onMeta }));
+    const fields = [...document.querySelectorAll('input[type=text]')] as HTMLInputElement[];
+    expect(fields).toHaveLength(3);
+    expect(fields[0]!.value).toBe('BCP 26-27');
+
+    fields[2]!.value = 'A. Debater';
+    fields[2]!.dispatchEvent(new Event('input'));
+    expect(onMeta).toHaveBeenCalledWith(expect.objectContaining({ authors: 'A. Debater' }));
+    // the dialog must not be rebuilt under the caret
+    expect(document.activeElement).not.toBe(document.body.firstElementChild);
+    expect(document.querySelectorAll('input[type=text]')).toHaveLength(3);
   });
 
   it('lists the pocket last and says it is rare', () => {
