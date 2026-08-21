@@ -8,8 +8,10 @@ import { existsSync, readFileSync } from 'node:fs';
 import { zip, unzip, isDocx, readText } from '../src/docx/zip.js';
 import { readMarker, writeMarker, clearMarker } from '../src/docx/marker.js';
 import { readTemplate, readAttachedTemplate } from '../src/profile/read-template.js';
-import { validateMapping } from '../src/profile/mapping.js';
+import { validateMapping, takesNativePath } from '../src/profile/mapping.js';
 import { DEFAULT_LAY } from '../src/profile/defaults.js';
+import { rewriteDocx } from '../src/docx/rewrite.js';
+import { makeExport } from './fixture.js';
 
 const PATH = 'local/donor.docx';
 const present = existsSync(PATH);
@@ -60,5 +62,40 @@ describe.skipIf(!present)('local donor template', () => {
 
     const fatal = validateMapping(profile).filter((w) => w.type !== 'cite_mark');
     expect(fatal).toEqual([]);
+  });
+
+  it('rewrites a cardmirror export into the school format', () => {
+    const { profile } = readTemplate(bytes, DEFAULT_LAY);
+    const out = unzip(
+      rewriteDocx(makeExport(), { ...profile, id: 'local' }, {
+        title: '1AC',
+        authors: 'A. Debater',
+        teamCode: 'BCP 26-27',
+      }),
+    );
+
+    // the school's own header, carried through untouched
+    expect(readText(out, 'word/header1.xml')).toBe(profile.headerXml);
+    expect(readMarker(out)).toBe('local');
+
+    // every relationship the document points at has to exist, or word calls
+    // the file corrupt rather than telling anyone why
+    const document = readText(out, 'word/document.xml')!;
+    const rels = readText(out, 'word/_rels/document.xml.rels')!;
+    for (const [, id] of document.matchAll(/r:id="([^"]+)"/g)) {
+      expect(rels).toContain(`Id="${id}"`);
+    }
+
+    // and every part the content types declare has to be in the package
+    const types = readText(out, '[Content_Types].xml')!;
+    for (const [, part] of types.matchAll(/PartName="\/([^"]+)"/g)) {
+      expect(Object.keys(out)).toContain(part);
+    }
+
+    // cardmirror has to recognise its own on the way back in
+    const styles = readText(out, 'word/styles.xml')!;
+    const ids = [...styles.matchAll(/w:styleId="([^"]+)"/g)].map((m) => m[1]!);
+    const names = [...styles.matchAll(/<w:name w:val="([^"]+)"/g)].map((m) => m[1]!);
+    expect(takesNativePath(ids, names)).toBe(true);
   });
 });
