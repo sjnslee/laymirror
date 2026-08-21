@@ -48,6 +48,32 @@ describe('page view', () => {
     expect(document.querySelector('.lm-head')?.textContent).toContain('1AC');
   });
 
+  it('shows each page its own window onto one continuous layout', () => {
+    // laying each page out separately made margins collapse differently, so
+    // the pages disagreed with the measurement they came from
+    makeEditor([400, 400, 400]);
+    openPageView(DEFAULT_LAY, meta);
+
+    const windows = [...document.querySelectorAll<HTMLElement>('.lm-window')];
+    expect(windows).toHaveLength(2);
+
+    const first = Number.parseFloat(windows[0]!.style.height);
+    const second = windows[1]!.firstElementChild as HTMLElement;
+    // page two starts exactly where page one stopped
+    expect(Number.parseFloat(second.style.marginTop)).toBe(-first);
+  });
+
+  it('gives a page that ends early the space, not the next block', () => {
+    // one 500px block then one that cannot be split: the first page is 500
+    // tall, not padded out to the full column
+    const content = makeEditor([500, 500]);
+    for (const block of content.children) (block as HTMLElement).className = 'pmd-tag';
+    openPageView(DEFAULT_LAY, meta);
+
+    const windows = [...document.querySelectorAll<HTMLElement>('.lm-window')];
+    expect(Number.parseFloat(windows[0]!.style.height)).toBeLessThan(864);
+  });
+
   it('clears its measuring stage away', () => {
     makeEditor([200]);
     openPageView(DEFAULT_LAY, meta);

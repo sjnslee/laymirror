@@ -49,6 +49,30 @@ export const LS = { recents: 'pmd-recent-files' } as const;
 export const DOC_NAME_CHIP = 'doc-name-chip-text';
 export const TITLE_SUFFIX = ' — CardMirror';
 
+/** `#editor` carries the base typography — font family, size, line height —
+ *  and defines every `--pmd-*` variable the rest of cardmirror's stylesheet
+ *  reads. `.pmd-pane-editor` defines none of it. so a clone taken out of the
+ *  editor inherits nothing and renders at browser defaults, which is what
+ *  made the first page view unreadable. copied explicitly instead. */
+export function copyEditorStyle(target: HTMLElement): void {
+  const editor = document.querySelector<HTMLElement>(EDITOR_SELECTOR);
+  if (!editor) return;
+
+  const computed = getComputedStyle(editor);
+  for (let i = 0; i < computed.length; i++) {
+    const property = computed.item(i);
+    if (property.startsWith('--pmd-')) {
+      target.style.setProperty(property, computed.getPropertyValue(property));
+    }
+  }
+  for (const property of ['font-family', 'font-size', 'line-height', 'color']) {
+    const value = computed.getPropertyValue(property);
+    if (value) target.style.setProperty(property, value);
+  }
+  // .ProseMirror's, and the reason a run of spaces survives
+  target.style.setProperty('white-space', 'pre-wrap');
+}
+
 /** our marker, stored beside cardmirror's own `cmirDocId`. */
 export const MARKER_PROP = 'layMirrorProfile';
 export const DOC_ID_PROP = 'cmirDocId';

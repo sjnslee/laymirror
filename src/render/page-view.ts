@@ -1,11 +1,11 @@
 // the read-only paged surface: what the judge's copy will look like, and
 // what the print button prints.
 //
-// the content is a clone of what cardmirror has already rendered, measured at
-// the width of the text column and split by `paginate`. the clones carry
-// cardmirror's own classes and sit inside a container that matches the lay
-// stylesheet's scope, so page view and work view are styled by one set of
-// rules and cannot disagree.
+// one continuous flow, N windows into it. the whole document is laid out
+// once at the width of the printed column, and each page shows the slice of
+// that layout belonging to it. laying each page out separately was the first
+// attempt and it was wrong: margins collapse differently once a paragraph is
+// on its own, so the pages disagreed with the measurement they came from.
 //
 // the header and footer drawn here are built from the document's metadata,
 // not from the donor's `header1.xml` — that part is word markup, a floating
@@ -14,7 +14,7 @@
 // preview of the page, not of their letterhead.
 
 import { EDITOR_SELECTOR } from '../host/cardmirror.js';
-import { measureBlocks, isPageBreak } from './measure.js';
+import { buildFlow, flowBlocks, measureBlocks } from './measure.js';
 import { paginate, usableHeightPx, usableWidthPx } from './paginate.js';
 import { printStyles, twipsToPx } from './print.js';
 import type { DocMeta } from '../docx/headers.js';
@@ -22,9 +22,6 @@ import type { Profile } from '../profile/profile.js';
 
 export const PAGE_VIEW_ID = 'laymirror-page-view';
 const STYLE_ID = 'laymirror-page-style';
-/** the lay stylesheet is scoped to the editor, and these clones are not in
- *  it. wearing cardmirror's pane class puts them back inside that scope. */
-const SCOPE_CLASS = 'pmd-pane-editor';
 
 const el = (tag: string, className?: string, text?: string): HTMLElement => {
   const node = document.createElement(tag);
@@ -51,14 +48,15 @@ function styles(profile: Profile): string {
   inset: 0;
   z-index: 99998;
   overflow: auto;
-  background: #4a4a4a;
-  padding: 24px 0 48px;
+  background: #55575c;
+  padding: 16px 0 48px;
 }
 #${PAGE_VIEW_ID} .lm-chrome {
   position: sticky;
   top: 0;
+  z-index: 1;
   display: flex;
-  gap: 12px;
+  gap: 8px;
   justify-content: center;
   align-items: center;
   font: 13px/1.5 system-ui, sans-serif;
@@ -70,12 +68,11 @@ function styles(profile: Profile): string {
   box-sizing: border-box;
   width: ${width}px;
   height: ${height}px;
-  margin: 0 auto 24px;
+  margin: 0 auto 20px;
   background: #fff;
   color: #000;
-  box-shadow: 0 6px 24px rgba(0,0,0,.45);
+  box-shadow: 0 4px 18px rgba(0,0,0,.5);
   overflow: hidden;
-  /* cardmirror zooms #editor; a page is a page */
   zoom: 1;
 }
 #${PAGE_VIEW_ID} .lm-head,
@@ -83,7 +80,8 @@ function styles(profile: Profile): string {
   position: absolute;
   left: ${twipsToPx(m.left)}px;
   width: ${usableWidthPx(profile.page)}px;
-  font: 10pt/1.3 inherit;
+  font: 700 10pt/1.3 var(--pmd-body-font, serif);
+  color: #000;
 }
 #${PAGE_VIEW_ID} .lm-head {
   top: ${twipsToPx(m.header)}px;
@@ -92,11 +90,11 @@ function styles(profile: Profile): string {
   display: flex;
   justify-content: space-between;
   gap: 12px;
-  font-weight: 700;
 }
 #${PAGE_VIEW_ID} .lm-foot {
   bottom: ${twipsToPx(m.footer)}px;
   text-align: center;
+  font-weight: 400;
 }
 #${PAGE_VIEW_ID} .lm-body {
   position: absolute;
@@ -106,12 +104,12 @@ function styles(profile: Profile): string {
   height: ${usableHeightPx(profile.page)}px;
   overflow: hidden;
 }
-#${PAGE_VIEW_ID} .lm-slice { overflow: hidden; }
+/* the window onto the flow: as tall as this page's share of it */
+#${PAGE_VIEW_ID} .lm-window { overflow: hidden; }
 #${PAGE_VIEW_ID} .lm-stage {
   position: absolute;
   left: -10000px;
   top: 0;
-  width: ${usableWidthPx(profile.page)}px;
   visibility: hidden;
 }
 ${printStyles(profile.page, `#${PAGE_VIEW_ID} .lm-page`, PAGE_VIEW_ID)}
@@ -126,15 +124,6 @@ function applyStyles(css: string): void {
     document.head.appendChild(sheet);
   }
   sheet.textContent = css;
-}
-
-/** a block prepared for measuring or for a page: cardmirror's own markup,
- *  inert. */
-function cloneBlock(source: HTMLElement): HTMLElement {
-  const copy = source.cloneNode(true) as HTMLElement;
-  copy.removeAttribute('contenteditable');
-  copy.removeAttribute('id');
-  return copy;
 }
 
 let onKey: ((e: KeyboardEvent) => void) | null = null;
@@ -173,45 +162,41 @@ export function openPageView(profile: Profile, meta: DocMeta): PageViewResult | 
   const root = el('div');
   root.id = PAGE_VIEW_ID;
   root.setAttribute('contenteditable', 'false');
+  document.body.append(root);
 
   // measured in the page's own column, at the page's own width, or every
   // line count belongs to some other layout
-  const stage = el('div', `lm-stage ${SCOPE_CLASS}`);
-  const staged = blocks.map(cloneBlock);
-  for (const copy of staged) stage.append(copy);
+  const stage = el('div', 'lm-stage');
+  const measured = buildFlow(blocks, profile);
+  stage.append(measured);
   root.append(stage);
-  document.body.append(root);
 
-  const metrics = measureBlocks(staged, profile);
+  const metrics = measureBlocks(flowBlocks(measured), profile);
   const { pages } = paginate(metrics, profile.page);
   stage.remove();
 
   root.append(chrome(pages.length));
 
+  let offset = 0;
   pages.forEach((box, index) => {
     const sheet = el('div', 'lm-page');
     sheet.append(header(meta));
 
-    const body = el('div', `lm-body ${SCOPE_CLASS}`);
-    for (const slice of box.slices) {
-      const source = blocks[slice.block];
-      if (!source) continue;
+    const body = el('div', 'lm-body');
+    const window_ = el('div', 'lm-window');
+    // this page's share of the flow, and no more: a page that ends early
+    // because a block would not fit must show the space, not the block
+    window_.style.height = `${box.heightPx}px`;
 
-      const window_ = el('div', 'lm-slice');
-      window_.style.height = `${slice.toPx - slice.fromPx}px`;
-
-      const inner = el('div');
-      inner.style.marginTop = `${-slice.fromPx}px`;
-      // a manual break is chrome, not content: it must not print
-      inner.append(isPageBreak(source) ? el('div') : cloneBlock(source));
-
-      window_.append(inner);
-      body.append(window_);
-    }
+    const flow = buildFlow(blocks, profile);
+    flow.style.marginTop = `${-offset}px`;
+    window_.append(flow);
+    body.append(window_);
 
     sheet.append(body);
     sheet.append(footer(index + 1, pages.length));
     root.append(sheet);
+    offset += box.heightPx;
   });
 
   onKey = (event: KeyboardEvent) => {
