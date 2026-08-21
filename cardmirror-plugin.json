@@ -1,0 +1,7 @@
+{
+  "id": "laymirror",
+  "name": "laymirror",
+  "version": "0.1.0",
+  "apiVersion": 1,
+  "description": "lay debate documents — word-native docx with pages, headers and footers"
+}

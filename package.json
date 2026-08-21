@@ -1,0 +1,21 @@
+{
+  "name": "laymirror",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "lay debate documents for cardmirror",
+  "scripts": {
+    "build": "node build.mjs",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "fflate": "^0.8.3"
+  },
+  "devDependencies": {
+    "esbuild": "^0.28.2",
+    "jsdom": "^30.0.1",
+    "typescript": "^7.0.2",
+    "vitest": "^4.1.11"
+  }
+}
