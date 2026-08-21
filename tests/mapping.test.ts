@@ -61,9 +61,12 @@ describe('validateMapping', () => {
     expect(blockWarnings).toEqual([]);
   });
 
-  it('warns that the cite mark needs the native path', () => {
-    const warning = validateMapping(DEFAULT_LAY).find((w) => w.type === 'cite_mark');
-    expect(warning?.message).toContain('native path');
+  it('does not warn about marks — the sentinel styles are always written', () => {
+    // buildStylesXml emits Style13ptBold, StyleUnderline and Emphasis whatever
+    // a template calls its own, so the native path is not in doubt and saying
+    // otherwise in the ui was just noise
+    expect(validateMapping(DEFAULT_LAY).some((w) => w.type === 'cite_mark')).toBe(false);
+    expect(validateMapping(DEFAULT_LAY)).toEqual([]);
   });
 
   it('flags a style name outside the vocabulary', () => {
