@@ -34,6 +34,13 @@ describe('readTemplate', () => {
     expect(profile.types.block.outlineLevel).toBe(2);
   });
 
+  it('drops word stock accent colour, keeps one the donor names outright', () => {
+    // heading 2 carries themeColor accent1 — chrome every template inherits.
+    // heading 3 names 7A0019 with no theme reference, so someone chose it.
+    expect(profile.types.hat.color).toBeUndefined();
+    expect(profile.types.block.color).toBe('7A0019');
+  });
+
   it('inherits palatino into Tag through basedOn Normal', () => {
     const tag = profile.types.tag;
     expect(tag.styleName).toBe('Tag');

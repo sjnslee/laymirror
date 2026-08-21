@@ -39,6 +39,11 @@ describe('toCss', () => {
     expect(rule).not.toContain('double');
   });
 
+  it('leaves the hat black — word stock accent blue is not a lay choice', () => {
+    expect(ruleFor('.pmd-hat')).not.toContain('color: #');
+    expect(ruleFor('.pmd-block')).toContain('color: #7A0019');
+  });
+
   it('indents the card body by the donor 288 dxa', () => {
     const rule = ruleFor('.pmd-card-body');
     expect(rule).toContain('margin-left: 0.2000in');

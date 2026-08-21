@@ -122,7 +122,12 @@ export function applyStylesheet(css: string): void {
   el.textContent = css;
 }
 
-/** the off-state must leave nothing behind. */
+export function hasStylesheet(): boolean {
+  return document.getElementById(STYLE_ID) !== null;
+}
+
+/** the off-state must leave nothing behind. every match, not the first —
+ *  a reloaded plugin can find one it did not put there. */
 export function removeStylesheet(): void {
-  document.getElementById(STYLE_ID)?.remove();
+  for (const el of document.querySelectorAll(`#${STYLE_ID}`)) el.remove();
 }

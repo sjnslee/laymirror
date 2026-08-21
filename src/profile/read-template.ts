@@ -91,8 +91,13 @@ function readStyleSpec(
   const u = attr(rPr ? first(rPr, 'w:u') : null, 'w:val');
   if (u) spec.underline = u as TypeSpec['underline'];
 
-  const color = attr(rPr ? first(rPr, 'w:color') : null, 'w:val');
-  if (color && color !== 'auto') spec.color = color;
+  // a themed colour is word's stock chrome, not a lay choice — its default
+  // heading 2 and 3 are accent1 blue in every template that ever passed
+  // through word, used or not. lay prints black, so a colour is adopted only
+  // when the donor names one outright.
+  const colorEl = rPr ? first(rPr, 'w:color') : null;
+  const color = attr(colorEl, 'w:val');
+  if (color && color !== 'auto' && !colorEl!.hasAttribute('w:themeColor')) spec.color = color;
 
   const jc = attr(pPr ? first(pPr, 'w:jc') : null, 'w:val');
   if (jc) spec.align = jc as TypeSpec['align'];
