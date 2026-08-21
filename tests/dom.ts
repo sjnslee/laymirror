@@ -89,3 +89,22 @@ export function stubCanvas(absent: readonly string[]): void {
     return ctx as unknown as CanvasRenderingContext2D;
   });
 }
+
+/** jsdom in this setup provides no localStorage, and cardmirror keeps its
+ *  recent-files list in one. */
+export function stubStorage(): void {
+  const store = new Map<string, string>();
+  const storage = {
+    getItem: (key: string) => store.get(key) ?? null,
+    setItem: (key: string, value: string) => void store.set(key, String(value)),
+    removeItem: (key: string) => void store.delete(key),
+    clear: () => store.clear(),
+    key: (i: number) => [...store.keys()][i] ?? null,
+    get length() {
+      return store.size;
+    },
+  };
+  for (const target of [window, globalThis]) {
+    Object.defineProperty(target, 'localStorage', { configurable: true, value: storage });
+  }
+}

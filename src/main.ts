@@ -11,7 +11,15 @@ import { zip, unzip, isDocx, type Parts } from './docx/zip.js';
 import { readMarker, writeMarker, clearMarker } from './docx/marker.js';
 import { rewriteDocx } from './docx/rewrite.js';
 import type { DocMeta } from './docx/headers.js';
-import { syncTo, currentProfile, setProfile, activeProfile, useWatcher } from './lay.js';
+import {
+  syncTo,
+  enterLay,
+  leaveLay,
+  currentProfile,
+  setProfile,
+  activeProfile,
+  useWatcher,
+} from './lay.js';
 import { openPanel, type PanelAction } from './ui/settings-panel.js';
 import { openPageView, closePageView, isPageViewOpen } from './render/page-view.js';
 import { showDraftMarks, clearDraftMarks, draftMarksShown } from './render/draft-marks.js';
@@ -25,31 +33,39 @@ const META_KEY = 'meta';
 
 let watcher: Watcher | null = null;
 
-/** resolve the open document and hand its parts to `edit`, then write back.
- *  every failure path reports rather than half-writing. */
+type Located = { path: string } | { error: string };
+
+/** the open document's path, or why there isn't one — as a sentence, so a
+ *  caller can say what it managed to do and what it didn't in one message. */
+function locate(api: PluginApi): Located {
+  if (!hasFileApi()) return { error: 'laymirror only works in the desktop app' };
+
+  const found = resolveDocPath(api.docInfo());
+  if (found.kind === 'ok') return { path: found.path };
+  if (found.kind === 'ambiguous') {
+    return { error: 'two open files have this name, so laymirror cannot tell them apart' };
+  }
+  return {
+    error:
+      found.because === 'not-a-docx'
+        ? 'save this document as a .docx first'
+        : 'no document is open',
+  };
+}
+
+/** read the open document, hand its parts to `edit`, write it back. every
+ *  failure path reports rather than half-writing. */
 async function withOpenDocx(
   api: PluginApi,
-  edit: (parts: Parts) => string,
+  edit: (parts: Parts) => void,
 ): Promise<string | null> {
-  if (!hasFileApi()) {
-    api.showToast('laymirror needs the desktop app');
+  const located = locate(api);
+  if ('error' in located) {
+    api.showToast(located.error);
     return null;
   }
 
-  const found = await resolveDocPath(api.docInfo());
-  if (found.kind === 'none') {
-    api.showToast('no open .docx to work on — save the document first');
-    return null;
-  }
-  if (found.kind === 'ambiguous') {
-    api.showToast(
-      `several open documents share this name; laymirror can't tell them apart ` +
-        `(${found.paths.length} candidates)`,
-    );
-    return null;
-  }
-
-  const file = await readFile(found.path);
+  const file = await readFile(located.path);
   if (!file) {
     api.showToast('could not read the document — reopen it and try again');
     return null;
@@ -68,16 +84,15 @@ async function withOpenDocx(
     return null;
   }
 
-  const message = edit(parts);
-  await writeFile(found.path, zip(parts));
+  edit(parts);
+  await writeFile(located.path, zip(parts));
   await watcher?.resync();
-  api.showToast(message);
-  return found.path;
+  return located.path;
 }
 
 /** the document's own path and lay marker, in one pass. */
 async function readState(api: PluginApi): Promise<{ path: string | null; marker: string | null }> {
-  const found = await resolveDocPath(api.docInfo());
+  const found = resolveDocPath(api.docInfo());
   if (found.kind !== 'ok') return { path: null, marker: null };
 
   const file = await readFile(found.path);
@@ -125,13 +140,39 @@ function ensureWatcher(api: PluginApi): void {
   useWatcher(watcher);
 }
 
+async function toggleLay(api: PluginApi): Promise<void> {
+  const profile = currentProfile();
+  const wasLay = activeProfile() !== null;
+
+  // the screen changes first, and whatever becomes of the file: a document
+  // laymirror cannot reach must never be left wearing lay type after the user
+  // has turned it off
+  if (wasLay) leaveLay();
+  else enterLay(profile.id);
+
+  const path = await withOpenDocx(api, (parts) => {
+    if (wasLay) clearMarker(parts);
+    else writeMarker(parts, profile.id);
+  });
+
+  if (path === null) {
+    api.showToast(wasLay ? 'lay off for this session only' : 'lay on for this session only');
+    return;
+  }
+
+  // the marker stuck, so the watcher can follow the file from here
+  syncTo(wasLay ? null : profile.id, path);
+  api.showToast(wasLay ? 'lay formatting off' : `lay formatting on — ${profile.name}`);
+}
+
 function togglePageView(api: PluginApi): void {
   if (isPageViewOpen()) {
     closePageView();
     return;
   }
-  const shown = openPageView(currentProfile(), readMeta(api));
-  if (!shown) api.showToast('nothing to lay out yet');
+  if (!openPageView(currentProfile(), readMeta(api))) {
+    api.showToast('nothing to lay out yet');
+  }
 }
 
 function toggleDraftMarks(api: PluginApi): void {
@@ -145,13 +186,13 @@ function toggleDraftMarks(api: PluginApi): void {
   else api.showToast(`${breaks} page break${breaks === 1 ? '' : 's'}`);
 }
 
-/** the break has to go in as text: cardmirror's model has nowhere else to
- *  keep one, and the rewrite turns it back into a real break on save. */
+/** the break goes in as text: cardmirror's model has nowhere else to keep
+ *  one, and the rewrite turns it back into a real break on save. */
 function insertPageBreak(api: PluginApi): void {
   const editor = document.querySelector<HTMLElement>('.ProseMirror');
   editor?.focus();
   if (editor && document.execCommand('insertText', false, PAGE_BREAK_TEXT)) {
-    api.showToast(`page break — it has to be the only text on its line`);
+    api.showToast('page break added — keep it on a line of its own');
     return;
   }
   api.showToast(`type ${PAGE_BREAK_TEXT} on a line of its own to break a page`);
@@ -170,22 +211,6 @@ function actionsFor(api: PluginApi): PanelAction[] {
       },
     },
   ];
-}
-
-async function toggleLay(api: PluginApi): Promise<void> {
-  let marker: string | null = null;
-  const path = await withOpenDocx(api, (parts) => {
-    if (readMarker(parts)) {
-      clearMarker(parts);
-      return 'lay formatting off for this document';
-    }
-    const profile = currentProfile();
-    writeMarker(parts, profile.id);
-    marker = profile.id;
-    return `lay formatting on — ${profile.name}`;
-  });
-
-  if (path) syncTo(marker, path);
 }
 
 /** the profile outlives a restart; the marker only records which one. */

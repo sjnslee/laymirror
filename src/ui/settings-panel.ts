@@ -137,7 +137,11 @@ export function openPanel(hooks: PanelHooks): void {
     dialog.append(el('p', undefined, `profile: ${profile.name}`));
 
     // state
-    const state = el('p', undefined, hooks.isLay() ? 'this document is lay' : 'this document is not lay');
+    const state = el(
+      'p',
+      undefined,
+      hooks.isLay() ? 'lay formatting is on for this document' : 'lay formatting is off',
+    );
     dialog.append(state);
     const toggle = el('button', undefined, hooks.isLay() ? 'turn lay off' : 'turn lay on');
     toggle.addEventListener('click', async () => {
@@ -174,10 +178,10 @@ export function openPanel(hooks: PanelHooks): void {
         hooks.onProfile({ ...next, id: `template:${name}`, name });
         const absent = missing.filter((type) => !RARE.includes(type));
         notice = absent.length
-          ? `loaded ${file.name} — no donor style for ${absent.join(', ')}`
+          ? `loaded ${file.name} — it has no style for ${absent.join(', ')}`
           : `loaded ${file.name}`;
-      } catch (err) {
-        notice = `could not read ${file.name}: ${String(err)}`;
+      } catch {
+        notice = `could not read ${file.name} — is it a word document or template?`;
       }
       render();
     });
@@ -192,8 +196,8 @@ export function openPanel(hooks: PanelHooks): void {
         'p',
         undefined,
         donor
-          ? 'this template brings its own header — these fill {{team}}, {{title}} and {{authors}} in it'
-          : 'no donor header, so laymirror builds one from these',
+          ? 'the template has its own header. these fill {{team}}, {{title}} and {{authors}} wherever it uses them.'
+          : 'no header in the template, so laymirror makes one from these.',
       ),
     );
     for (const field of META_FIELDS) {
@@ -237,7 +241,7 @@ export function openPanel(hooks: PanelHooks): void {
     // round-trip warnings
     const warnings = validateMapping(profile);
     if (warnings.length) {
-      dialog.append(el('h3', undefined, 'round-trip'));
+      dialog.append(el('h3', undefined, 'reopening'));
       for (const w of warnings) {
         dialog.append(el('p', undefined, `${w.type}: ${w.message}`));
       }
@@ -251,8 +255,8 @@ export function openPanel(hooks: PanelHooks): void {
         el(
           'p',
           undefined,
-          'not installed here, so something else is drawn and page breaks may ' +
-            'drift from word. the printed file still asks for the real face.',
+          'missing on this machine, so something else is drawn in its place. ' +
+            'the saved file still asks for the real one.',
         ),
       );
 

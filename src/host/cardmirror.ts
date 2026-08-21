@@ -43,15 +43,38 @@ export const CSS_VAR = {
 
 export const LS = { recents: 'pmd-recent-files' } as const;
 
+/** cardmirror paints the open document's filename here, and into
+ *  `document.title`. these are the only signals that name the current
+ *  document when it has no doc id — which is every word-authored .docx. */
+export const DOC_NAME_CHIP = 'doc-name-chip-text';
+export const TITLE_SUFFIX = ' — CardMirror';
+
 /** our marker, stored beside cardmirror's own `cmirDocId`. */
 export const MARKER_PROP = 'layMirrorProfile';
 export const DOC_ID_PROP = 'cmirDocId';
 
-/** a `pmd-recent-files` entry. `handle` is an absolute path on electron. */
+/** a `pmd-recent-files` entry. `handle` is an absolute path on electron.
+ *
+ *  the list is capped at ten and the open document is unshifted to the front
+ *  with a fresh `lastOpenedAt`, so it is a history — not a list of what is
+ *  open now. treating it as the latter is what made every document look
+ *  ambiguous. */
 export interface RecentEntry {
   handle: string | null;
   filename: string;
   format: 'cmir' | 'docx' | string;
+  lastOpenedAt?: number;
+}
+
+/** the filename cardmirror is showing for the document in front of the user. */
+export function currentFilename(): string | null {
+  const chip = document.getElementById(DOC_NAME_CHIP)?.textContent?.trim();
+  if (chip) return chip;
+
+  const title = document.title.endsWith(TITLE_SUFFIX)
+    ? document.title.slice(0, -TITLE_SUFFIX.length).trim()
+    : '';
+  return title || null;
 }
 
 export function readRecents(): RecentEntry[] {

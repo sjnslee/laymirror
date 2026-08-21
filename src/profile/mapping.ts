@@ -168,10 +168,6 @@ const BLOCK_TYPES: readonly BlockType[] = [
 export function validateMapping(profile: Profile): MappingWarning[] {
   const warnings: MappingWarning[] = [];
 
-  const ids = Object.values(profile.types).map((t) => t.styleId);
-  const names = Object.values(profile.types).map((t) => t.styleName);
-  const native = takesNativePath(ids, names);
-
   for (const type of BLOCK_TYPES) {
     const spec = profile.types[type];
     const byName = LEGACY_BY_NAME[spec.styleName.toLowerCase()];
@@ -182,23 +178,8 @@ export function validateMapping(profile: Profile): MappingWarning[] {
       warnings.push({
         type,
         styleName: spec.styleName,
-        message: `"${spec.styleName}" is outside cardmirror's vocabulary — it will reimport as a plain paragraph`,
+        message: `cardmirror does not know a style called "${spec.styleName}", so this text comes back as an ordinary paragraph when the file is reopened`,
       });
-    }
-  }
-
-  if (!native) {
-    for (const type of ['cite_mark', 'underline_mark'] as const) {
-      const spec = profile.types[type];
-      if (!LEGACY_BY_NAME[spec.styleName.toLowerCase()] && !LEGACY_BY_ID[spec.styleId]) {
-        warnings.push({
-          type,
-          styleName: spec.styleName,
-          message:
-            `"${spec.styleName}" only reimports on cardmirror's native path; ` +
-            `emit ${REQUIRED_FOR_NATIVE_PATH.map((g) => g[0]).join(', ')} to keep it`,
-        });
-      }
     }
   }
 

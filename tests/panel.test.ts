@@ -41,13 +41,20 @@ describe('settings panel', () => {
   it('reflects lay state and offers the matching action', () => {
     openPanel(hooks({ isLay: () => true }));
     const text = document.body.textContent ?? '';
-    expect(text).toContain('this document is lay');
+    expect(text).toContain('lay formatting is on');
     expect(text).toContain('turn lay off');
   });
 
-  it('surfaces the round-trip warning about cite marks', () => {
-    openPanel(hooks());
-    expect(document.body.textContent).toContain('native path');
+  it('warns when a style name will not survive reopening', () => {
+    const odd = {
+      ...DEFAULT_LAY,
+      types: {
+        ...DEFAULT_LAY.types,
+        tag: { ...DEFAULT_LAY.types.tag, styleName: 'Schoolwide Tag Thing' },
+      },
+    };
+    openPanel(hooks({ profile: () => odd }));
+    expect(document.body.textContent).toContain('ordinary paragraph');
   });
 
   it('opens once even if asked twice, and closes cleanly', () => {
@@ -133,7 +140,7 @@ describe('template picker', () => {
     openPanel(hooks());
     await upload(zip(makeDocx()), 'bare.docx');
 
-    await vi.waitFor(() => expect(notice()).toContain('no donor style for'));
+    await vi.waitFor(() => expect(notice()).toContain('has no style for'));
     expect(notice()).toContain('tag');
     expect(notice()).not.toContain('pocket');
   });
