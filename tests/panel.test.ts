@@ -20,7 +20,7 @@ describe('settings panel', () => {
     for (const label of ['pocket', 'tag', 'cite', 'card body', 'underline']) {
       expect(text).toContain(label);
     }
-    expect(text).toContain('Palatino Linotype');
+    expect(text).toContain('Times New Roman');
   });
 
   it('takes a template through a file input, not the scoped host api', () => {

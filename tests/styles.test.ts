@@ -1,13 +1,14 @@
 // @vitest-environment jsdom
 import { describe, it, expect } from 'vitest';
-import { readFileSync } from 'node:fs';
 import { buildStylesXml } from '../src/docx/styles.js';
 import { buildSectPr, replaceSectPr } from '../src/docx/sect.js';
 import { readTemplate } from '../src/profile/read-template.js';
 import { DEFAULT_LAY } from '../src/profile/defaults.js';
 import { unzip, readText } from '../src/docx/zip.js';
 
-const bytes = new Uint8Array(readFileSync('tests/fixtures/donor.docx'));
+import { makeTemplate } from './fixture.js';
+
+const bytes = makeTemplate();
 const { profile } = readTemplate(bytes, DEFAULT_LAY);
 const xml = buildStylesXml(profile);
 

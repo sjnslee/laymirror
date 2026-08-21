@@ -1,12 +1,12 @@
 // @vitest-environment jsdom
 import { describe, it, expect } from 'vitest';
-import { readFileSync } from 'node:fs';
 import { readTemplate, readAttachedTemplate } from '../src/profile/read-template.js';
 import { DEFAULT_LAY } from '../src/profile/defaults.js';
 import { unzip } from '../src/docx/zip.js';
 
-// jsdom gives import.meta.url an http scheme, so resolve from the root
-const bytes = new Uint8Array(readFileSync('tests/fixtures/donor.docx'));
+import { makeTemplate } from './fixture.js';
+
+const bytes = makeTemplate();
 const { profile, missing } = readTemplate(bytes, DEFAULT_LAY);
 
 describe('readTemplate', () => {

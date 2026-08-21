@@ -54,7 +54,7 @@ describe('native-path detection', () => {
 });
 
 describe('validateMapping', () => {
-  it('passes every block type in the the donor profile', () => {
+  it('passes every block type in the default profile', () => {
     const blockWarnings = validateMapping(DEFAULT_LAY).filter(
       (w) => w.type !== 'cite_mark' && w.type !== 'underline_mark',
     );

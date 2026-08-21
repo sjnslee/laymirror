@@ -113,7 +113,7 @@ export const ROUND_TRIP_SAFE_NAMES: Record<BlockType, readonly string[]>;
 export function validateMapping(p: Profile): MappingWarning[];
 ```
 
-**`defaults.ts`** — a deliberately generic lay profile, no school'"'"'s, 
+**`defaults.ts`** — a deliberately generic lay profile, no school's, 
 inlined so the plugin works before any template is chosen.
 
 ### `src/render/`
@@ -281,7 +281,8 @@ same result.
 vitest + jsdom for logic, a real headless browser only if measurement
 tests need it.
 
-**fixtures.** a synthetic donor is the primary fixture. add a
+**fixtures.** a synthetic donor built in `tests/fixture.ts` is the primary
+fixture — no real school template enters the repo. add a
 synthetic cardmirror export (produced once by the real exporter, checked
 in) as the rewrite input.
 

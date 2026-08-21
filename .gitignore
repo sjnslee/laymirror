@@ -2,3 +2,6 @@ node_modules/
 plugin.js
 *.tsbuildinfo
 .DS_Store
+
+# a school template, kept out of the repo
+local/

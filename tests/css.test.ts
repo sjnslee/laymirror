@@ -2,8 +2,13 @@
 import { describe, it, expect } from 'vitest';
 import { toCss, applyStylesheet, removeStylesheet, STYLE_ID } from '../src/render/css.js';
 import { DEFAULT_LAY } from '../src/profile/defaults.js';
+import { readTemplate } from '../src/profile/read-template.js';
+import { makeTemplate } from './fixture.js';
 
-const css = toCss(DEFAULT_LAY);
+// a donor-derived profile exercises the interesting cases — theme fonts,
+// thick rules, real indents — which the deliberately plain default has none of
+const donor = readTemplate(makeTemplate(), DEFAULT_LAY).profile;
+const css = toCss(donor);
 
 /** the block of declarations for one selector. */
 function ruleFor(selector: string): string {

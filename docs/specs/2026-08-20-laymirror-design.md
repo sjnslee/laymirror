@@ -85,7 +85,7 @@ profile = {
 
 the mapping exists because the vocabularies differ:
 
-| cardmirror type | exports as | a school'"'"'s lay template |
+| cardmirror type | exports as | a school's lay template |
 | --- | --- | --- |
 | pocket | `Heading1` | `Heading1` (serif, large, small caps, centered, page-break-before) |
 | hat | `Heading2` | `Heading2` |

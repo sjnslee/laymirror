@@ -18,7 +18,7 @@ describe('lay state', () => {
   it('styles the editor when the document carries a marker', () => {
     syncTo('sample-lay');
     expect(activeProfile()).toBe('sample-lay');
-    expect(styleEl()?.textContent).toContain('Palatino Linotype');
+    expect(styleEl()?.textContent).toContain('Times New Roman');
   });
 
   it('leaves nothing behind when the marker is cleared', () => {
