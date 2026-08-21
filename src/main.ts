@@ -8,6 +8,7 @@ import { hasFileApi, readFile, writeFile } from './host/electron.js';
 import { resolveDocPath } from './host/paths.js';
 import { zip, unzip, isDocx } from './docx/zip.js';
 import { readMarker, writeMarker, clearMarker } from './docx/marker.js';
+import { syncTo, activeProfile } from './lay.js';
 
 const ID = 'laymirror';
 const DEFAULT_PROFILE = 'sample-lay';
@@ -74,9 +75,11 @@ register({
           const current = readMarker(parts);
           if (current) {
             clearMarker(parts);
+            syncTo(null);
             return 'lay formatting off for this document';
           }
           writeMarker(parts, DEFAULT_PROFILE);
+          syncTo(DEFAULT_PROFILE);
           return `lay formatting on — profile "${DEFAULT_PROFILE}"`;
         }),
     },
@@ -92,7 +95,12 @@ register({
         }
         const file = await readFile(found.path);
         const marker = file ? readMarker(unzip(file.bytes)) : null;
-        api.showToast(marker ? `lay document — profile "${marker}"` : 'not a lay document');
+        syncTo(marker);
+        api.showToast(
+          marker
+            ? `lay document — profile "${marker}", styling ${activeProfile() ? 'on' : 'off'}`
+            : 'not a lay document',
+        );
       },
     },
   ],
