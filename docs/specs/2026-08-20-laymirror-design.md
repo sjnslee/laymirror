@@ -55,7 +55,8 @@ verified against cardmirror 1.3.0. these shape everything below.
 | canonical `Heading1/2/3` all carry `pageBreakBefore`; the lay template puts it only on `Heading1` | page-break-before is a per-type property |
 | `word/settings.xml` `<w:attachedTemplate>` is how cardmirror makes verbatim recognize its exports | same lever points word at the lay `.dotx` |
 | autosave only writes `.cmir` — docx is skipped as too expensive | lay saves are always explicit |
-| plugin release assets cap at 5 MiB each | rules out heavyweight renderers |
+| github-install release assets cap at 5 MiB each; the "load plugin from file" dev path has **no cap** | distribution is the constrained path, local development isn't |
+| `openExternal` rejects anything but `http(s):` and `mailto:` | we cannot hand the docx to word to print. our print path is the only one |
 
 ## the format model
 
@@ -188,8 +189,21 @@ indicators from the same computation.
 
 exact word pagination is not achievable at reasonable cost. superdoc
 does clear that bar — its layout painter uses word's own metrics rather
-than the browser's — but it is 9 MB and agpl-3.0, against a 5 MiB
-per-asset cap. ruled out on both counts.
+than the browser's — but it cannot be used here.
+
+size and agpl are not the reason (an earlier draft of this spec said
+they were; both were wrong). superdoc's browser bundle is 1.2 MB, well
+under the cap. the reason is that superdoc 2's fidelity lives in
+`@superdoc/docx-engine`, a **separate proprietary package** that the
+superdoc tarball deliberately excludes. its license permits use only as
+a dependency of superdoc, and §3.1(d) forbids redistributing it or
+making it available to a third party. shipping it inside a `plugin.js`
+release asset is exactly that. a commercial license from harbour
+enterprises would clear it; nothing else does.
+
+we write our own paginator from the ooxml spec and word's documented
+layout behavior. we do not inspect, benchmark, or reimplement the
+superdoc engine.
 
 what we get: page breaks matching word in the large majority of cases,
 drifting on long documents. two things bound the damage.
