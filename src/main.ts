@@ -6,6 +6,7 @@
 import { register, type PluginApi } from './host/plugin-api.js';
 import { hasFileApi, readFile, writeFile } from './host/electron.js';
 import { resolveDocPath } from './host/paths.js';
+import { currentFilename } from './host/cardmirror.js';
 import { watchSaves, type Watcher } from './host/watcher.js';
 import { zip, unzip, isDocx, type Parts } from './docx/zip.js';
 import { readMarker, writeMarker, clearMarker } from './docx/marker.js';
@@ -108,8 +109,9 @@ function readMeta(api: PluginApi): DocMeta {
   const stored = api.storage.get(META_KEY);
   const saved = (stored && typeof stored === 'object' ? stored : {}) as Partial<DocMeta>;
   return {
-    // the document names itself; the rest is the team's, and outlives it
-    title: (api.docInfo()?.docTitle ?? saved.title ?? '').replace(/\.[^.]+$/, ''),
+    // the document names itself — from the chip, not from docInfo(), which is
+    // null for exactly the documents laymirror is for
+    title: (currentFilename() ?? saved.title ?? '').replace(/\.[^.]+$/, ''),
     authors: saved.authors ?? '',
     teamCode: saved.teamCode ?? '',
   };

@@ -14,6 +14,8 @@
 // preview of the page, not of their letterhead.
 
 import { EDITOR_SELECTOR } from '../host/cardmirror.js';
+import { hasStylesheet } from './css.js';
+import { ensureEmbeddedFonts, removeEmbeddedFonts } from './embedded-fonts.js';
 import { buildFlow, flowBlocks, measureBlocks } from './measure.js';
 import { paginate, usableHeightPx, usableWidthPx } from './paginate.js';
 import { printStyles, twipsToPx } from './print.js';
@@ -139,6 +141,8 @@ export function closePageView(): void {
   }
   document.getElementById(PAGE_VIEW_ID)?.remove();
   document.getElementById(STYLE_ID)?.remove();
+  // lay owns the faces while it is on; page view only borrowed them
+  if (!hasStylesheet()) removeEmbeddedFonts();
 }
 
 export interface PageViewResult {
@@ -157,6 +161,7 @@ export function openPageView(profile: Profile, meta: DocMeta): PageViewResult | 
   );
   if (blocks.length === 0) return null;
 
+  ensureEmbeddedFonts();
   applyStyles(styles(profile));
 
   const root = el('div');

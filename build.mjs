@@ -13,6 +13,8 @@ const options = {
   target: 'chrome120', // electron 42
   sourcemap: false,
   legalComments: 'none',
+  // the plugin is one file, so a font it carries has to be inside it
+  loader: { '.woff2': 'dataurl' },
 };
 
 if (watch) {

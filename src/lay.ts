@@ -3,6 +3,7 @@
 
 import { applyStylesheet, hasStylesheet, removeStylesheet, toCss } from './render/css.js';
 import { clearDraftMarks } from './render/draft-marks.js';
+import { ensureEmbeddedFonts, removeEmbeddedFonts } from './render/embedded-fonts.js';
 import { closePageView } from './render/page-view.js';
 import { DEFAULT_LAY } from './profile/defaults.js';
 import type { Profile } from './profile/profile.js';
@@ -45,6 +46,7 @@ export function enterLay(profileId: string, path?: string | null): void {
   // the dom is the truth, not `active`: dev-loading the plugin again reruns
   // this module from scratch while the previous sheet stays in the head
   if (active !== profileId || !hasStylesheet()) {
+    ensureEmbeddedFonts();
     applyStylesheet(toCss(profile));
     active = profileId;
   }
@@ -56,6 +58,7 @@ export function enterLay(profileId: string, path?: string | null): void {
  *  has to actually put the fonts back. */
 export function leaveLay(): void {
   removeStylesheet();
+  removeEmbeddedFonts();
   clearDraftMarks();
   closePageView();
   active = null;

@@ -34,6 +34,13 @@ describe('substitution', () => {
     expect(stackFor({ ...DEFAULT_LAY, fontFallbacks: {} }, 'Garamond')).toBe('"Garamond", serif');
   });
 
+  it('points garamond at the face the plugin carries', () => {
+    expect(stackFor(DEFAULT_LAY, 'Garamond')).toContain('EB Garamond');
+    // the real one first: a machine with monotype garamond should use it,
+    // since that is what word will lay the printed file out in
+    expect(stackFor(DEFAULT_LAY, 'Garamond').indexOf('Garamond,')).toBe(0);
+  });
+
   it('redirects one family and leaves the others alone', () => {
     const next = substituteFont(DEFAULT_LAY, 'Garamond', 'Tinos, serif');
 

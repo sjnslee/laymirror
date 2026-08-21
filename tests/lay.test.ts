@@ -42,6 +42,16 @@ describe('lay state', () => {
     expect(document.querySelectorAll(`#${STYLE_ID}`)).toHaveLength(1);
   });
 
+  it('carries the fonts a lay template needs, and takes them away again', () => {
+    // garamond is on no mac and in no cardmirror bundle, so the plugin ships
+    // the face itself rather than letting the browser pick a serif
+    syncTo('sample-lay');
+    expect(document.getElementById('laymirror-fonts')).not.toBeNull();
+
+    syncTo(null);
+    expect(document.getElementById('laymirror-fonts')).toBeNull();
+  });
+
   it('turns lay off even when the sheet outlived the module', () => {
     // dev-loading the plugin again reruns this module with `active` back at
     // null while the previous sheet is still in the head. off must still mean
