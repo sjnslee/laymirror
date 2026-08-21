@@ -13,8 +13,12 @@ import { missingFonts } from './fonts.js';
 
 const PANEL_ID = 'laymirror-panel';
 
+// lay documents are pocket-less in practice — the pocket is a tech-debate
+// divider — so it is listed last and its absence from a donor is not worth
+// reporting.
+const RARE: readonly (BlockType | RunType)[] = ['pocket'];
+
 const ROWS: { type: BlockType | RunType; label: string }[] = [
-  { type: 'pocket', label: 'pocket' },
   { type: 'hat', label: 'hat' },
   { type: 'block', label: 'block' },
   { type: 'tag', label: 'tag' },
@@ -25,6 +29,7 @@ const ROWS: { type: BlockType | RunType; label: string }[] = [
   { type: 'underline_mark', label: 'underline' },
   { type: 'cite_mark', label: 'cite mark' },
   { type: 'emphasis_mark', label: 'emphasis' },
+  { type: 'pocket', label: 'pocket (rare in lay)' },
 ];
 
 export interface PanelHooks {
@@ -56,7 +61,13 @@ function describe(profile: Profile, type: BlockType | RunType): string {
   return bits.filter(Boolean).join(' · ');
 }
 
+let onKey: ((e: KeyboardEvent) => void) | null = null;
+
 export function closePanel(): void {
+  if (onKey) {
+    document.removeEventListener('keydown', onKey, true);
+    onKey = null;
+  }
   document.getElementById(PANEL_ID)?.remove();
 }
 
@@ -87,6 +98,11 @@ export function openPanel(hooks: PanelHooks): void {
     overflow: 'auto',
     boxShadow: '0 12px 40px rgba(0,0,0,.35)',
   });
+
+  // a re-render rebuilds the file input, which then reads "no file chosen"
+  // however well the load went — so what happened has to live in panel state
+  // rather than on the element or in a node appended beside it
+  let notice: string | null = null;
 
   const render = () => {
     dialog.replaceChildren();
@@ -123,16 +139,21 @@ export function openPanel(hooks: PanelHooks): void {
       try {
         const bytes = new Uint8Array(await file.arrayBuffer());
         const { profile: next, missing } = readTemplate(bytes, DEFAULT_LAY);
-        hooks.onProfile({ ...next, name: file.name.replace(/\.[^.]+$/, '') });
-        if (missing.length) {
-          dialog.append(el('p', undefined, `no donor style for: ${missing.join(', ')}`));
-        }
-        render();
+        const name = file.name.replace(/\.[^.]+$/, '');
+        // the id travels in the marker, so two schools' templates must not
+        // both call themselves 'default'
+        hooks.onProfile({ ...next, id: `template:${name}`, name });
+        const absent = missing.filter((type) => !RARE.includes(type));
+        notice = absent.length
+          ? `loaded ${file.name} — no donor style for ${absent.join(', ')}`
+          : `loaded ${file.name}`;
       } catch (err) {
-        dialog.append(el('p', undefined, `could not read that template: ${String(err)}`));
+        notice = `could not read ${file.name}: ${String(err)}`;
       }
+      render();
     });
     dialog.append(picker);
+    if (notice) dialog.append(el('p', undefined, notice));
 
     // mapping
     dialog.append(el('h3', undefined, 'text types'));
@@ -184,4 +205,13 @@ export function openPanel(hooks: PanelHooks): void {
     if (e.target === overlay) closePanel();
   });
   document.body.append(overlay);
+
+  // capture, because cardmirror binds escape too and the modal is on top
+  onKey = (e: KeyboardEvent) => {
+    if (e.key !== 'Escape') return;
+    e.preventDefault();
+    e.stopPropagation();
+    closePanel();
+  };
+  document.addEventListener('keydown', onKey, true);
 }

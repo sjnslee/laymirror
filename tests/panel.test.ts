@@ -2,6 +2,8 @@
 import { describe, it, expect, afterEach, vi } from 'vitest';
 import { openPanel, closePanel } from '../src/ui/settings-panel.js';
 import { DEFAULT_LAY } from '../src/profile/defaults.js';
+import { zip } from '../src/docx/zip.js';
+import { makeDocx, makeTemplate } from './fixture.js';
 
 const hooks = (over: Partial<Parameters<typeof openPanel>[0]> = {}) => ({
   profile: () => DEFAULT_LAY,
@@ -49,5 +51,70 @@ describe('settings panel', () => {
     expect(document.querySelectorAll('#laymirror-panel')).toHaveLength(1);
     closePanel();
     expect(document.querySelector('#laymirror-panel')).toBeNull();
+  });
+
+  it('closes on escape', () => {
+    openPanel(hooks());
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+    expect(document.querySelector('#laymirror-panel')).toBeNull();
+  });
+
+  it('ignores other keys', () => {
+    openPanel(hooks());
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'e' }));
+    expect(document.querySelector('#laymirror-panel')).not.toBeNull();
+  });
+
+  it('stops listening for escape once closed', () => {
+    const detach = vi.spyOn(document, 'removeEventListener');
+    openPanel(hooks());
+    closePanel();
+    expect(detach).toHaveBeenCalledWith('keydown', expect.any(Function), true);
+    detach.mockRestore();
+  });
+
+  it('lists the pocket last and says it is rare', () => {
+    openPanel(hooks());
+    const labels = [...document.querySelectorAll('tr')].map(
+      (tr) => tr.firstElementChild?.textContent,
+    );
+    expect(labels[0]).toBe('hat');
+    expect(labels.at(-1)).toBe('pocket (rare in lay)');
+  });
+});
+
+// the picker is rebuilt on every render, so the browser's own "no file
+// chosen" label always comes back — the panel has to say what it loaded.
+describe('template picker', () => {
+  const notice = () => document.querySelector('input[type=file] + p')?.textContent ?? '';
+
+  const upload = async (bytes: Uint8Array, filename: string) => {
+    const input = document.querySelector('input[type=file]') as HTMLInputElement;
+    Object.defineProperty(input, 'files', {
+      configurable: true,
+      value: [new File([bytes as BlobPart], filename)],
+    });
+    input.dispatchEvent(new Event('change'));
+  };
+
+  it('confirms the load by name, and names the profile after it', async () => {
+    const onProfile = vi.fn();
+    openPanel(hooks({ onProfile }));
+    await upload(makeTemplate(), 'westside lay.dotx');
+
+    await vi.waitFor(() => expect(notice()).toContain('loaded westside lay.dotx'));
+    expect(onProfile).toHaveBeenCalledWith(
+      // the id rides in the marker, so two schools must not both be 'default'
+      expect.objectContaining({ id: 'template:westside lay', name: 'westside lay' }),
+    );
+  });
+
+  it('reports what a donor had no style for, but never the pocket', async () => {
+    openPanel(hooks());
+    await upload(zip(makeDocx()), 'bare.docx');
+
+    await vi.waitFor(() => expect(notice()).toContain('no donor style for'));
+    expect(notice()).toContain('tag');
+    expect(notice()).not.toContain('pocket');
   });
 });
