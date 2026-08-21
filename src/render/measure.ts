@@ -3,10 +3,37 @@
 // testable without a layout engine, and so this file stays the only place
 // that touches real geometry.
 
-import { blockTypeOf } from './css.js';
+import { copyEditorStyle } from '../host/cardmirror.js';
+import { blockTypeOf, LAY_SCOPE } from './css.js';
+import { usableWidthPx } from './paginate.js';
 import { PAGE_BREAK_TEXT } from '../profile/mapping.js';
 import type { BlockMetrics } from './paginate.js';
 import type { Profile } from '../profile/profile.js';
+
+/** the document laid out as one column of the printed width, styled the way
+ *  the editor styles it. page view shows windows onto this; draft marks
+ *  measure it and throw it away. */
+export function buildFlow(blocks: readonly HTMLElement[], profile: Profile): HTMLElement {
+  const flow = document.createElement('div');
+  flow.className = LAY_SCOPE;
+  flow.style.width = `${usableWidthPx(profile.page)}px`;
+  copyEditorStyle(flow);
+
+  for (const block of blocks) {
+    const copy = block.cloneNode(true) as HTMLElement;
+    copy.removeAttribute('contenteditable');
+    copy.removeAttribute('id');
+    // a manual break marks a page, it is not content on one
+    if (isPageBreak(block)) copy.textContent = '';
+    flow.append(copy);
+  }
+  return flow;
+}
+
+/** the blocks of a flow, in order. */
+export function flowBlocks(flow: HTMLElement): HTMLElement[] {
+  return Array.from(flow.children).filter((c): c is HTMLElement => c instanceof HTMLElement);
+}
 
 export function isPageBreak(el: Element): boolean {
   return (el.textContent ?? '').trim() === PAGE_BREAK_TEXT;

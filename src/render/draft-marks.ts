@@ -6,14 +6,13 @@
 // either reconcile ours away or mistake them for document content.
 
 import { EDITOR_SELECTOR } from '../host/cardmirror.js';
-import { measureBlocks } from './measure.js';
-import { paginate, usableWidthPx } from './paginate.js';
+import { buildFlow, flowBlocks, measureBlocks } from './measure.js';
+import { paginate } from './paginate.js';
 import type { BreakMark } from './paginate.js';
 import type { Profile } from '../profile/profile.js';
 
 const LAYER_ID = 'laymirror-draft-marks';
 const STYLE_ID = 'laymirror-draft-style';
-const SCOPE_CLASS = 'pmd-pane-editor';
 /** an edit relaid out on every keystroke would measure more than it draws. */
 const SETTLE_MS = 400;
 
@@ -69,26 +68,18 @@ function ensureStyle(): void {
  *  line counts belong to a layout nobody is going to print. */
 function measureOffscreen(blocks: readonly HTMLElement[], profile: Profile) {
   const stage = document.createElement('div');
-  stage.className = SCOPE_CLASS;
   Object.assign(stage.style, {
     position: 'absolute',
     left: '-10000px',
     top: '0',
-    width: `${usableWidthPx(profile.page)}px`,
     visibility: 'hidden',
   });
 
-  const staged = blocks.map((block) => {
-    const copy = block.cloneNode(true) as HTMLElement;
-    copy.removeAttribute('contenteditable');
-    copy.removeAttribute('id');
-    stage.append(copy);
-    return copy;
-  });
-
+  const flow = buildFlow(blocks, profile);
+  stage.append(flow);
   document.body.append(stage);
   try {
-    return measureBlocks(staged, profile);
+    return measureBlocks(flowBlocks(flow), profile);
   } finally {
     stage.remove();
   }

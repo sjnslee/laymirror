@@ -10,6 +10,12 @@ import type { BlockType, Profile, RunType, TypeSpec } from '../profile/profile.j
 
 export const STYLE_ID = 'laymirror-style';
 
+/** laymirror's own scope. page view is not inside the editor, and wearing
+ *  cardmirror's pane class to borrow its rules brought its chrome too. */
+export const LAY_SCOPE = 'laymirror-flow';
+
+const SCOPE = `${EDITOR_SELECTOR}, .${LAY_SCOPE}`;
+
 /** class cardmirror puts on each block/mark. `paragraph` has no class of its
  *  own — it is a bare <p> inside the editor. */
 const SELECTOR: Record<BlockType | RunType, string> = {
@@ -120,7 +126,7 @@ function variables(profile: Profile): string {
     .filter((p): p is [string, string] => p[1] !== undefined)
     .map(([name, value]) => `  ${name}: ${value};`)
     .join('\n');
-  return `${EDITOR_SELECTOR} {\n${body}\n}`;
+  return `${SCOPE} {\n${body}\n}`;
 }
 
 export function toCss(profile: Profile): string {
@@ -133,7 +139,7 @@ export function toCss(profile: Profile): string {
     const decls = declarations(profile.types[type], profile);
     if (decls.length === 0) continue;
     // :is() keeps the editor scope without inflating specificity per selector
-    blocks.push(`:is(${EDITOR_SELECTOR}) ${selector} {\n${decls.join('\n')}\n}`);
+    blocks.push(`:is(${SCOPE}) ${selector} {\n${decls.join('\n')}\n}`);
   }
 
   return blocks.join('\n\n') + '\n';
