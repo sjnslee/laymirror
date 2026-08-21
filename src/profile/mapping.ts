@@ -114,6 +114,13 @@ export const TYPE_BY_EXPORT_STYLE: Record<string, BlockType | RunType> = Object.
     .map(([type, styleId]) => [styleId, type]),
 );
 
+/** cardmirror's model has no page break of its own: `<w:br w:type="page"/>`
+ *  imports as a plain line break and exports as one, so a manual break has to
+ *  survive as ordinary text between saves. a paragraph whose whole text is
+ *  this is one. work view draws it as word's dotted rule; the rewrite turns
+ *  it back into a real break. */
+export const PAGE_BREAK_TEXT = '[page break]';
+
 /** heading level (from w:outlineLvl + 1) -> block type. */
 export const HEADING_LEVEL_TO_TYPE: Record<number, BlockType> = {
   1: 'pocket',

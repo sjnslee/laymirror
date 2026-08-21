@@ -50,9 +50,16 @@ describe('rewriteDocx', () => {
     expect(paragraph(3)).toContain(body);
   });
 
+  it('turns a carried page break back into a real one', () => {
+    // cardmirror's model has nowhere to keep a page break, so it rides
+    // through as text and is restored here
+    expect(paragraph(4)).toContain('<w:br w:type="page"/>');
+    expect(documentXml).not.toContain('[page break]');
+  });
+
   it('leaves ordinary prose after a heading alone', () => {
     // over-reaching here would indent a paragraph that is not evidence
-    expect(paragraph(5)).not.toContain('<w:pStyle');
+    expect(paragraph(6)).not.toContain('<w:pStyle');
   });
 
   it('remaps the marks inside the runs', () => {

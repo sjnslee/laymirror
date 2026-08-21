@@ -170,6 +170,8 @@ const EXPORT_DOC =
   `<w:p>${run('StyleUnderline', 'the underlined bit')}${run(null, ' and the rest')}</w:p>` +
   // a second body paragraph with no marks at all, one past the evidence
   `<w:p>${run(null, 'more of the same card')}</w:p>` +
+  // a manual page break, which cardmirror can only carry as text
+  `<w:p>${run(null, '[page break]')}</w:p>` +
   // a heading closes the card
   `<w:p><w:pPr><w:pStyle w:val="Heading2"/></w:pPr>${run(null, 'a hat')}</w:p>` +
   // ordinary prose after it must stay ordinary
