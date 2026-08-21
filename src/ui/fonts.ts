@@ -41,6 +41,7 @@ export interface Substitute {
  *  advance widths, so a page breaks where word breaks it. the rest are not,
  *  and are offered because a legible near-match beats a browser default. */
 export const SUBSTITUTES: readonly Substitute[] = [
+  { label: 'EB Garamond (carried by laymirror)', stack: '"EB Garamond", Garamond, serif' },
   { label: 'Tinos (matches Times New Roman)', stack: 'Tinos, "Times New Roman", serif' },
   { label: 'Caladea (matches Cambria)', stack: 'Caladea, Cambria, serif' },
   { label: 'Carlito (matches Calibri)', stack: 'Carlito, Calibri, sans-serif' },
