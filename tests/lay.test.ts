@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
-import { describe, it, expect, beforeEach } from 'vitest';
-import { syncTo, enterLay, leaveLay, activeProfile } from '../src/lay.js';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { syncTo, enterLay, leaveLay, activeProfile, useWatcher } from '../src/lay.js';
 import { STYLE_ID } from '../src/render/css.js';
 
 const styleEl = () => document.getElementById(STYLE_ID);
@@ -60,5 +60,44 @@ describe('lay state', () => {
     styleEl()!.remove();
     syncTo('sample-lay');
     expect(styleEl()?.textContent).toContain('Times New Roman');
+  });
+});
+
+describe('the watcher lay owns', () => {
+  const watcher = { start: vi.fn(), stop: vi.fn(), resync: vi.fn() };
+
+  beforeEach(() => {
+    useWatcher(watcher);
+    watcher.start.mockClear();
+    watcher.stop.mockClear();
+  });
+  afterEach(() => useWatcher(null));
+
+  it('polls nothing at all while off', () => {
+    syncTo(null);
+    expect(watcher.start).not.toHaveBeenCalled();
+  });
+
+  it('watches the document that carries the marker', () => {
+    syncTo('sample-lay', '/lay.docx');
+    expect(watcher.start).toHaveBeenCalledWith('/lay.docx');
+  });
+
+  it('is torn down when the marker is cleared', () => {
+    syncTo('sample-lay', '/lay.docx');
+    syncTo(null);
+    expect(watcher.stop).toHaveBeenCalled();
+  });
+
+  it('does not restart on every sync of the same document', () => {
+    syncTo('sample-lay', '/lay.docx');
+    syncTo('sample-lay', '/lay.docx');
+    expect(watcher.start).toHaveBeenCalledTimes(1);
+  });
+
+  it('follows the user to another lay document', () => {
+    syncTo('sample-lay', '/one.docx');
+    syncTo('sample-lay', '/two.docx');
+    expect(watcher.start).toHaveBeenLastCalledWith('/two.docx');
   });
 });
