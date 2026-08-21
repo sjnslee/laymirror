@@ -45,7 +45,10 @@ verified against cardmirror 1.3.0. these shape everything below.
 | `plugin.js` runs in the renderer main world via `webFrame.executeJavaScript` | full dom + `localStorage` + `window.electronAPI` access |
 | ctrl+s is a **native electron menu accelerator** dispatched from main; `window.electronAPI` is contextBridge-exposed under `contextIsolation: true, sandbox: true` | save cannot be intercepted. we react to it instead |
 | `electronAPI.statFile(path)` → `{mtimeMs, size}`, unscoped | save detection by polling |
-| `electronAPI.readFileAtPath` is scoped, but a file the user opened this session is granted; `writeFileAtPath` writes back | read + rewrite the saved docx in place |
+| `electronAPI.readFileAtPath` is scoped, but a file the user opened this session is granted — and grants persist across sessions in an LRU journal; `writeFileAtPath` is **entirely unscoped** | read + rewrite the saved docx in place |
+| `readFileAtPath` serves **only `.cmir` and `.docx`** — every other extension reads as `null` | a school's `.dotx` cannot be ingested through it; the template picker needs `pickFile`/`openFile`, or v1 takes `.docx` donors only |
+| `cmirDocId` is absent until cardmirror itself saves the file | a lay `.docx` that word owns has no id to match on, so path resolution cannot rely on it alone |
+| there is no command palette; `defaultKey` auto-binds only when the chord is free | how the six commands are actually invoked is an open question, not a given |
 | display already runs on css custom properties — `--pmd-size-*`, `--pmd-body-font`, `--pmd-color-*` — plus stable classes `.pmd-tag`, `.pmd-card-body`, `.pmd-cite-para`, `.pmd-undertag`, `.pmd-analytic` under `#editor` / `.pmd-pane-editor` | restyling is an injected stylesheet. `!important` beats core's inline writes and survives the user touching appearance settings |
 | only one `bodyFont` for the whole document | per-type fonts are ours to add |
 | exporter emits one hardcoded `<w:sectPr>` (letter, 1" margins, **no header/footer refs**) and never writes `header1.xml` / `footer1.xml` | pagination parts are entirely ours |
@@ -283,10 +286,9 @@ against, so a v2 plugin api or a cardmirror refactor is a contained fix.
 
 ## build order
 
-**0. spike.** load a stub plugin from file and confirm from the renderer
-that `statFile`, `readFileAtPath` and `writeFileAtPath` are callable and
-that a rewritten docx survives. everything downstream assumes this;
-find out first.
+**0. spike — done, passed.** all three calls are reachable from a
+dev-loaded plugin, and a rewritten docx opens cleanly in word. see
+*phase 0 results* in the implementation plan.
 
 1. skeleton — plugin registers, commands appear, lay on/off marker
    round-trips through `docProps/custom.xml`

@@ -365,3 +365,45 @@ carried from the design doc, none blocking:
 - tables in v1, or inherit the donor's `TableNormal`?
 - page view in one pane while another edits, or one per window?
 - two lay profiles active at once, for two schools' files open together?
+
+---
+
+## phase 0 results
+
+run 2026-08-20 against the shipped build (`/Applications/cardmirror.app`,
+1.3.0, electron 42.2.0) with a school lay template open as a `.docx`.
+a throwaway bundle was dev-loaded through settings → plugins →
+developer → "load plugin from file…". **passed.**
+
+| check | result |
+| --- | --- |
+| `statFile` | `{mtimeMs, size}`, unscoped — save detection is viable |
+| `readFileAtPath` | returned all 29,754 bytes of the open document |
+| `writeFileAtPath` | wrote 26,405 bytes; returns `undefined` on success, `'collision'` only when `failIfExists` |
+| unzip → stamp marker → rezip | 26 parts, all xml well-formed, `[Content_Types].xml` still first |
+| word opens the rewritten file | yes, cleanly — no repair prompt |
+| `pmViewDesc.node` | `type=doc childCount=8`, children `block`, `paragraph`, `card` |
+| css custom properties | live: normal 11pt, tag 13pt, pocket 26pt, body-font `"Times New Roman", …` |
+| dom classes | `pmd-tag` 1, `pmd-card-body` 12, `pmd-card` 1, container `#editor` |
+
+the save pipeline the design rests on is real. four things the spike
+changed:
+
+1. **`writeFileAtPath` is unscoped** — no path validation beyond a
+   non-empty string. broader than assumed.
+2. **`readFileAtPath` serves only `.cmir`/`.docx`.** a `.dotx` donor
+   reads as `null`. template ingest (phase 3) must use a picker, or v1
+   accepts `.docx` donors only.
+3. **`cmirDocId` is absent** on a file cardmirror has not itself saved —
+   exactly the lay `.docx` case. resolving the open document's path by
+   comparing that id to `docInfo().docId` therefore has no id to compare
+   for the files that matter. phase 1 needs a fallback for two open
+   documents sharing a filename.
+4. **command invocation is unresolved.** there is no command palette in
+   the renderer, and `defaultKey` auto-binds only when the chord is
+   free — a bound chord silently does nothing. the design calls for six
+   commands, so phase 1 has to establish how one is actually triggered.
+
+read-scope's own source comment confirms the posture the design takes:
+plugins are full-trust in the renderer, so that boundary is
+"defense-in-depth against QUIET bulk reads, not a sandbox".
