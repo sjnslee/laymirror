@@ -5,6 +5,7 @@
 // only the mapped styles are overwritten.
 
 import { REQUIRED_FOR_NATIVE_PATH } from '../profile/mapping.js';
+import { parseXml, serializeXml } from './xml.js';
 import type { BlockType, Profile, RunType, TypeSpec } from '../profile/profile.js';
 
 const W = 'http://schemas.openxmlformats.org/wordprocessingml/2006/main';
@@ -144,10 +145,7 @@ function ensureNativePathSentinels(doc: Document): void {
 
 export function buildStylesXml(profile: Profile): string {
   const source = profile.donorStylesXml.trim() || EMPTY_STYLES;
-  const doc = new DOMParser().parseFromString(source, 'application/xml');
-  if (doc.getElementsByTagName('parsererror').length > 0) {
-    throw new Error('donor styles.xml did not parse');
-  }
+  const doc = parseXml(source, 'donor styles.xml');
 
   for (const key of Object.keys(profile.types) as (BlockType | RunType)[]) {
     const spec = profile.types[key];
@@ -157,5 +155,5 @@ export function buildStylesXml(profile: Profile): string {
 
   ensureNativePathSentinels(doc);
 
-  return new XMLSerializer().serializeToString(doc);
+  return serializeXml(doc);
 }
