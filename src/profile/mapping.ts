@@ -81,6 +81,39 @@ export const NATIVE_MARK_BY_ID: Record<string, RunType> = {
   AnalyticChar: 'analytic_mark',
 };
 
+/** what cardmirror's *exporter* writes for each type, which is not the same
+ *  question as what its importer reads back. `null` means it writes no
+ *  `w:pStyle` at all — a cite paragraph and a card body leave the editor as
+ *  bare paragraphs, indistinguishable from body text by style alone, which is
+ *  why `rewrite.ts` has to recognise them from their runs.
+ *
+ *  note `tag` leaves as `Heading4`, not as any style named "tag".
+ *
+ *  verified against the shipped 1.3.0 exporter. */
+export const EXPORT_STYLE_BY_TYPE: Record<BlockType | RunType, string | null> = {
+  pocket: 'Heading1',
+  hat: 'Heading2',
+  block: 'Heading3',
+  tag: 'Heading4',
+  analytic: 'Analytic',
+  undertag: 'Undertag',
+  cite_paragraph: null,
+  card_body: null,
+  paragraph: null,
+  cite_mark: 'Style13ptBold',
+  underline_mark: 'StyleUnderline',
+  emphasis_mark: 'Emphasis',
+  undertag_mark: 'UndertagChar',
+  analytic_mark: 'AnalyticChar',
+};
+
+/** the same table read the other way, for turning an export back into types. */
+export const TYPE_BY_EXPORT_STYLE: Record<string, BlockType | RunType> = Object.fromEntries(
+  Object.entries(EXPORT_STYLE_BY_TYPE)
+    .filter((entry): entry is [BlockType | RunType, string] => entry[1] !== null)
+    .map(([type, styleId]) => [styleId, type]),
+);
+
 /** heading level (from w:outlineLvl + 1) -> block type. */
 export const HEADING_LEVEL_TO_TYPE: Record<number, BlockType> = {
   1: 'pocket',

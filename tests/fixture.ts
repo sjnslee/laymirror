@@ -115,6 +115,8 @@ const SETTINGS_RELS =
   '</Relationships>';
 
 const WML = 'http://schemas.openxmlformats.org/wordprocessingml/2006/main';
+const REL_NS = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships';
+const PKG_REL_NS = 'http://schemas.openxmlformats.org/package/2006/relationships';
 
 /** the shape a real school header has: a team code word split into two runs
  *  by its revision ids, a ptab, and a live page field. */
@@ -144,5 +146,63 @@ export function makeTemplate(): Uint8Array {
   writeText(parts, 'word/_rels/settings.xml.rels', SETTINGS_RELS);
   writeText(parts, 'word/header1.xml', DONOR_HEADER);
   writeText(parts, 'word/footer1.xml', DONOR_FOOTER);
+  return zip(parts);
+}
+
+// ── a cardmirror export ───────────────────────────────────────────────
+// what the save pipeline actually receives: cardmirror's own style ids, no
+// pStyle at all on cite paragraphs or card bodies, its one hardcoded letter
+// section, and Debate.dotm as the attached template.
+
+const run = (styleId: string | null, text: string) =>
+  '<w:r>' +
+  (styleId ? `<w:rPr><w:rStyle w:val="${styleId}"/></w:rPr>` : '') +
+  `<w:t>${text}</w:t></w:r>`;
+
+const EXPORT_DOC =
+  '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+  `<w:document xmlns:w="${WML}"><w:body>` +
+  // a tag leaves as Heading4, not as anything named "tag"
+  `<w:p><w:pPr><w:pStyle w:val="Heading4"/></w:pPr>${run(null, 'the tag')}</w:p>` +
+  // a cite paragraph: bare, recognisable only by its cite marks
+  `<w:p>${run('Style13ptBold', 'Author 24')}${run(null, ', a journal')}</w:p>` +
+  // a card body: bare, with underlined evidence
+  `<w:p>${run('StyleUnderline', 'the underlined bit')}${run(null, ' and the rest')}</w:p>` +
+  // a second body paragraph with no marks at all, one past the evidence
+  `<w:p>${run(null, 'more of the same card')}</w:p>` +
+  // a heading closes the card
+  `<w:p><w:pPr><w:pStyle w:val="Heading2"/></w:pPr>${run(null, 'a hat')}</w:p>` +
+  // ordinary prose after it must stay ordinary
+  `<w:p>${run(null, 'just a paragraph')}</w:p>` +
+  '<w:sectPr><w:pgSz w:w="12240" w:h="15840"/>' +
+  '<w:pgMar w:top="1440" w:right="1440" w:bottom="1440" w:left="1440" w:header="720" w:footer="720" w:gutter="0"/>' +
+  '</w:sectPr></w:body></w:document>';
+
+const EXPORT_STYLES =
+  '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+  `<w:styles xmlns:w="${WML}">` +
+  '<w:style w:type="paragraph" w:styleId="Heading4"><w:name w:val="heading 4"/></w:style>' +
+  '<w:style w:type="character" w:styleId="StyleUnderline"><w:name w:val="Style Underline"/></w:style>' +
+  '</w:styles>';
+
+const EXPORT_SETTINGS =
+  '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+  `<w:settings xmlns:w="${WML}" xmlns:r="${REL_NS}"><w:attachedTemplate r:id="rId1"/></w:settings>`;
+
+const EXPORT_SETTINGS_RELS =
+  '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+  `<Relationships xmlns="${PKG_REL_NS}">` +
+  `<Relationship Id="rId1" Type="${REL_NS}/attachedTemplate"` +
+  ' Target="file:///Debate.dotm" TargetMode="External"/></Relationships>';
+
+/** a cardmirror export as raw docx bytes. */
+export function makeExport(): Uint8Array {
+  const parts = makeDocx();
+  writeText(parts, 'word/document.xml', EXPORT_DOC);
+  writeText(parts, 'word/styles.xml', EXPORT_STYLES);
+  writeText(parts, 'word/settings.xml', EXPORT_SETTINGS);
+  writeText(parts, 'word/_rels/settings.xml.rels', EXPORT_SETTINGS_RELS);
+  // nothing laymirror models — it has to come out the far end untouched
+  writeText(parts, 'word/numbering.xml', '<w:numbering/>');
   return zip(parts);
 }
