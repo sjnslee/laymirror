@@ -71,3 +71,21 @@ export function makeEditor(heights: number[], text = 'text'): HTMLElement {
   document.body.append(host);
   return content;
 }
+
+/** a canvas that measures a family the machine does not have: every generic
+ *  fallback then reports its own width, which is exactly the signal the
+ *  metric probe looks for. */
+export function stubCanvas(absent: readonly string[]): void {
+  const widths: Record<string, number> = { monospace: 100, serif: 110, 'sans-serif': 120 };
+  vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockImplementation(() => {
+    const ctx = {
+      font: '',
+      measureText: () => {
+        const [, family, fallback] = /72px "([^"]+)", (.+)/.exec(ctx.font) ?? [];
+        const missing = absent.includes(family ?? '');
+        return { width: missing ? (widths[fallback ?? ''] ?? 0) : 90 };
+      },
+    };
+    return ctx as unknown as CanvasRenderingContext2D;
+  });
+}
