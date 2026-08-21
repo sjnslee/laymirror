@@ -2,6 +2,8 @@
 // off means off: no stylesheet, nothing injected, nothing watched.
 
 import { applyStylesheet, hasStylesheet, removeStylesheet, toCss } from './render/css.js';
+import { clearDraftMarks } from './render/draft-marks.js';
+import { closePageView } from './render/page-view.js';
 import { DEFAULT_LAY } from './profile/defaults.js';
 import type { Profile } from './profile/profile.js';
 import type { Watcher } from './host/watcher.js';
@@ -54,6 +56,8 @@ export function enterLay(profileId: string, path?: string | null): void {
  *  has to actually put the fonts back. */
 export function leaveLay(): void {
   removeStylesheet();
+  clearDraftMarks();
+  closePageView();
   active = null;
   watching = null;
   watcher?.stop();
