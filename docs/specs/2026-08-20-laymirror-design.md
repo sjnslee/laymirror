@@ -53,7 +53,8 @@ verified against cardmirror 1.3.0. these shape everything below.
 | only one `bodyFont` for the whole document | per-type fonts are ours to add |
 | exporter emits one hardcoded `<w:sectPr>` (letter, 1" margins, **no header/footer refs**) and never writes `header1.xml` / `footer1.xml` | pagination parts are entirely ours |
 | exporter maps `tag`→`Heading4`, and emits card bodies and cites with **no pstyle** | style ids must be rewritten to the template's |
-| importer's legacy remapper (`src/ooxml/legacy-styles.ts`) already recognizes `Tag`, `Cite`, `card`, `Underline` by name | writing real lay style names is round-trip safe |
+| the importer has **two paths**. it takes the *native* one — marks matched by `styleId` — only when the document's styles contain all of `Style13ptBold`/`Style 13 pt Bold`, `StyleUnderline`/`Style Underline`, and `Emphasis`. otherwise it falls back to the *legacy* one, which matches paragraphs by lowercased `w:name` and character styles against a small fixed table | writing real lay style names is round-trip safe for `Tag`, `Cite`, `card` and `Underline`, which are all in the legacy table — but the donor lacks two of the three sentinel styles, so **cite marks are silently lost** unless we also emit `StyleUnderline` and `Emphasis`. they cost nothing in word |
+| heading depth comes from `w:outlineLvl`, mapped `1→pocket, 2→hat, 3→block, 4→tag` | heading names don't matter; outline levels do |
 | `<w:br w:type="page"/>` imports as a plain line break and exports as one | **cardmirror destroys manual page breaks.** we own them |
 | canonical `Heading1/2/3` all carry `pageBreakBefore`; the lay template puts it only on `Heading1` | page-break-before is a per-type property |
 | `word/settings.xml` `<w:attachedTemplate>` is how cardmirror makes verbatim recognize its exports | same lever points word at the lay `.dotx` |
