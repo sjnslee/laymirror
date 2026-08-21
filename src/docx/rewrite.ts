@@ -6,7 +6,7 @@
 // section with no header or footer, and a `Debate.dotm` attached template.
 // every one of those is replaced here.
 
-import { EXPORT_STYLE_BY_TYPE, TYPE_BY_EXPORT_STYLE } from '../profile/mapping.js';
+import { EXPORT_STYLE_BY_TYPE, PAGE_BREAK_TEXT, TYPE_BY_EXPORT_STYLE } from '../profile/mapping.js';
 import type { BlockType, Profile, RunType } from '../profile/profile.js';
 import { buildSectPr, replaceSectPr } from './sect.js';
 import { buildStylesXml } from './styles.js';
@@ -89,6 +89,21 @@ function classifyBare(paragraph: Element, openCard: boolean): BlockType | null {
   return openCard ? 'card_body' : null;
 }
 
+/** a manual break rides through cardmirror as ordinary text, because its
+ *  model has nowhere else to put one. this is where it becomes a page break
+ *  again. */
+function makePageBreak(doc: Document, paragraph: Element): void {
+  for (const child of Array.from(paragraph.childNodes)) {
+    if (child.nodeType === 1 && (child as Element).tagName === 'w:pPr') continue;
+    paragraph.removeChild(child);
+  }
+  const run = doc.createElementNS(W, 'w:r');
+  const br = doc.createElementNS(W, 'w:br');
+  br.setAttribute('w:type', 'page');
+  run.appendChild(br);
+  paragraph.appendChild(run);
+}
+
 /** cardmirror's export style ids -> the profile's, plus the two styles it
  *  never writes. */
 function applyStyles(documentXml: string, profile: Profile): string {
@@ -101,6 +116,12 @@ function applyStyles(documentXml: string, profile: Profile): string {
   let openCard = false;
 
   for (const paragraph of elements(doc.documentElement, 'w:p')) {
+    if ((paragraph.textContent ?? '').trim() === PAGE_BREAK_TEXT) {
+      makePageBreak(doc, paragraph);
+      openCard = false;
+      continue;
+    }
+
     const pPr = directChild(paragraph, 'w:pPr');
     const pStyle = pPr ? directChild(pPr, 'w:pStyle') : null;
     const exported = pStyle?.getAttribute('w:val') ?? null;
