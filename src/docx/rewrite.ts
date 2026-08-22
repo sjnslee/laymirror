@@ -1,22 +1,27 @@
-// the save pipeline: a cardmirror export in, a lay document word will open
-// looking like the school's template out.
+// the save pipeline.
 //
-// cardmirror's exporter writes its own style ids (`Heading4` for a tag, and
-// nothing at all for a cite paragraph or a card body), one hardcoded letter
-// section with no header or footer, and a `Debate.dotm` attached template.
-// every one of those is replaced here.
+// cardmirror's exporter rebuilds the package from scratch on every save: its
+// own styles.xml, one hardcoded letter section with 1" margins, and no
+// header, footer or theme at all. so this is not a formatter. it is the thing
+// that puts back what the exporter has just thrown away.
+//
+// exactly one question decides what happens, and only word can answer it: does
+// the file carry a header reference? cardmirror never writes one, so if there
+// is one, word wrote this file and it is authoritative — we re-adopt it and
+// touch nothing. if there is not, cardmirror just stripped it, and we restore.
 
-import { EXPORT_STYLE_BY_TYPE, PAGE_BREAK_TEXT, TYPE_BY_EXPORT_STYLE } from '../profile/mapping.js';
-import type { BlockType, Profile, RunType } from '../profile/profile.js';
-import { buildSectPr, replaceSectPr } from './sect.js';
-import { buildStylesXml } from './styles.js';
-import { writeHeaderFooter, type DocMeta } from './headers.js';
+import { EXPORT_STYLE_BY_TYPE, LEGACY_SENTINEL } from '../profile/mapping.js';
+import type { Profile } from '../profile/profile.js';
+import { injectBreaks, paragraphSpans, type PageBreak } from './breaks.js';
 import { writeMarker } from './marker.js';
+import {
+  captureSnapshot,
+  hasOwnHeader,
+  restoreSnapshot,
+  type Snapshot,
+} from './snapshot.js';
 import { parseXml, serializeXml } from './xml.js';
 import { isDocx, readText, unzip, writeText, zip, type Parts } from './zip.js';
-
-const W = 'http://schemas.openxmlformats.org/wordprocessingml/2006/main';
-const R = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships';
 
 const DOCUMENT = 'word/document.xml';
 const SETTINGS = 'word/settings.xml';
@@ -29,7 +34,12 @@ const TEMPLATE_REL_ID = 'rIdLayMirrorTemplate';
 const CITE_EXPORT = EXPORT_STYLE_BY_TYPE.cite_mark!;
 const UNDERLINE_EXPORT = EXPORT_STYLE_BY_TYPE.underline_mark!;
 
-export type { DocMeta };
+export type SaveOutcome =
+  /** word wrote this file. its header is the truth; keep it. */
+  | { kind: 'adopted'; snapshot: Snapshot }
+  /** cardmirror wrote it, and we put the school's document back. */
+  | { kind: 'restored'; bytes: Uint8Array }
+  | { kind: 'skipped'; because: string };
 
 function directChild(parent: Element, tag: string): Element | null {
   const children = parent.childNodes;
@@ -47,8 +57,7 @@ function elements(parent: Element, tag: string): Element[] {
   return out;
 }
 
-const styleIdFor = (profile: Profile, type: BlockType | RunType): string =>
-  profile.types[type].styleId;
+const W = 'http://schemas.openxmlformats.org/wordprocessingml/2006/main';
 
 function setPStyle(doc: Document, paragraph: Element, styleId: string): void {
   let pPr = directChild(paragraph, 'w:pPr');
@@ -68,16 +77,15 @@ function setPStyle(doc: Document, paragraph: Element, styleId: string): void {
 /** which type a bare paragraph is, judged by the marks its runs carry.
  *
  *  a cite paragraph and a card body leave cardmirror with no style of their
- *  own, so the marks inside them are the only evidence in the file. a cite is
- *  the paragraph carrying cite marks; a body is the one carrying underline
- *  marks, or the bare paragraph immediately after evidence — a card is a cite
- *  followed by its body, and the exporter flattens the card node away.
- *
- *  the inference deliberately reaches exactly one paragraph past the last
- *  mark it saw. guessing further would indent ordinary paragraphs, and a
- *  paragraph left bare merely renders as the profile's Normal, which is the
- *  cheaper mistake. */
-function classifyBare(paragraph: Element, openCard: boolean): BlockType | null {
+ *  own, and `card` is flattened away on export, so the marks inside are the
+ *  only evidence left in the file. the inference reaches exactly one
+ *  paragraph past the last mark it saw: guessing further would indent
+ *  ordinary prose, while leaving a paragraph bare merely renders it as the
+ *  template's Normal, which is the cheaper mistake. */
+function classifyBare(
+  paragraph: Element,
+  openCard: boolean,
+): 'cite_paragraph' | 'card_body' | null {
   const marks = new Set(
     elements(paragraph, 'w:rStyle')
       .map((el) => el.getAttribute('w:val'))
@@ -89,51 +97,25 @@ function classifyBare(paragraph: Element, openCard: boolean): BlockType | null {
   return openCard ? 'card_body' : null;
 }
 
-/** a manual break rides through cardmirror as ordinary text, because its
- *  model has nowhere else to put one. this is where it becomes a page break
- *  again. */
-function makePageBreak(doc: Document, paragraph: Element): void {
-  for (const child of Array.from(paragraph.childNodes)) {
-    if (child.nodeType === 1 && (child as Element).tagName === 'w:pPr') continue;
-    paragraph.removeChild(child);
-  }
-  const run = doc.createElementNS(W, 'w:r');
-  const br = doc.createElementNS(W, 'w:br');
-  br.setAttribute('w:type', 'page');
-  run.appendChild(br);
-  paragraph.appendChild(run);
-}
-
-/** cardmirror's export style ids -> the profile's, plus the two styles it
- *  never writes. */
-function applyStyles(documentXml: string, profile: Profile): string {
+/** cardmirror's export style ids -> the template's own. */
+export function applyStyles(documentXml: string, profile: Profile): string {
   const doc = parseXml(documentXml, DOCUMENT);
-  // the section we are about to write references its header and footer by
-  // r:id, so the prefix has to be bound even if the export never used it
-  if (!doc.documentElement.hasAttribute('xmlns:r')) {
-    doc.documentElement.setAttribute('xmlns:r', R);
-  }
   let openCard = false;
 
   for (const paragraph of elements(doc.documentElement, 'w:p')) {
-    if ((paragraph.textContent ?? '').trim() === PAGE_BREAK_TEXT) {
-      makePageBreak(doc, paragraph);
-      openCard = false;
-      continue;
-    }
-
     const pPr = directChild(paragraph, 'w:pPr');
     const pStyle = pPr ? directChild(pPr, 'w:pStyle') : null;
     const exported = pStyle?.getAttribute('w:val') ?? null;
 
     if (exported !== null) {
-      const type = TYPE_BY_EXPORT_STYLE[exported];
-      if (type) pStyle!.setAttribute('w:val', styleIdFor(profile, type));
+      const mapped = profile.styleMap[exported];
+      if (mapped) pStyle!.setAttribute('w:val', mapped);
       // a heading, a tag or an analytic closes whatever card was open
       openCard = false;
     } else {
       const type = classifyBare(paragraph, openCard);
-      if (type) setPStyle(doc, paragraph, styleIdFor(profile, type));
+      const target = type ? profile.bareStyles[type] : null;
+      if (target) setPStyle(doc, paragraph, target);
       openCard =
         type === 'cite_paragraph' ||
         elements(paragraph, 'w:rStyle').some(
@@ -142,8 +124,8 @@ function applyStyles(documentXml: string, profile: Profile): string {
     }
 
     for (const rStyle of elements(paragraph, 'w:rStyle')) {
-      const type = TYPE_BY_EXPORT_STYLE[rStyle.getAttribute('w:val') ?? ''];
-      if (type) rStyle.setAttribute('w:val', styleIdFor(profile, type));
+      const mapped = profile.styleMap[rStyle.getAttribute('w:val') ?? ''];
+      if (mapped) rStyle.setAttribute('w:val', mapped);
     }
   }
 
@@ -187,28 +169,64 @@ function pointAttachedTemplate(parts: Parts, template: string | null): void {
   writeText(
     parts,
     SETTINGS,
-    settings.replace(/<w:settings\b([^>]*)>/, `<w:settings$1><w:attachedTemplate r:id="${TEMPLATE_REL_ID}"/>`),
+    settings.replace(
+      /<w:settings\b([^>]*)>/,
+      `<w:settings$1><w:attachedTemplate r:id="${TEMPLATE_REL_ID}"/>`,
+    ),
   );
+}
+
+/** an earlier laymirror carried manual breaks as the literal text
+ *  `[page break]`. breaks live outside the document now, so a paragraph that
+ *  is nothing but the old sentinel is swept up rather than printed. */
+export function dropLegacySentinel(documentXml: string): string {
+  const doomed = paragraphSpans(documentXml).filter(
+    (span) =>
+      span.xml
+        .replace(/<[^>]*>/g, '')
+        .trim() === LEGACY_SENTINEL,
+  );
+  let xml = documentXml;
+  for (const span of doomed.reverse()) {
+    xml = xml.slice(0, span.start) + xml.slice(span.end);
+  }
+  return xml;
 }
 
 /** throws rather than returning something half-written: this runs against a
  *  file the user is actively saving, and a partial read must never become a
  *  partial write. */
-export function rewriteDocx(bytes: Uint8Array, profile: Profile, meta: DocMeta): Uint8Array {
+export function applyProfile(
+  bytes: Uint8Array,
+  profile: Profile,
+  breaks: readonly PageBreak[] = [],
+): SaveOutcome {
   const parts = unzip(bytes);
   if (!isDocx(parts)) throw new Error('not a complete docx — read again in a moment');
+
+  // only word writes a header reference. if there is one, this file is word's
+  // and its header carries whatever the user typed into it — adopt, never
+  // overwrite. this is what makes a hand-edited team code permanent.
+  if (hasOwnHeader(parts)) {
+    const snapshot = captureSnapshot(parts);
+    return snapshot
+      ? { kind: 'adopted', snapshot }
+      : { kind: 'skipped', because: 'nothing to adopt' };
+  }
+
+  if (!profile.snapshot) return { kind: 'skipped', because: 'no template loaded' };
 
   const documentXml = readText(parts, DOCUMENT);
   if (!documentXml) throw new Error('document.xml is unreadable');
 
-  writeText(parts, 'word/styles.xml', buildStylesXml(profile));
+  writeText(parts, DOCUMENT, applyStyles(dropLegacySentinel(documentXml), profile));
+  restoreSnapshot(parts, profile.snapshot);
 
-  const refs = writeHeaderFooter(parts, profile, meta);
-  const styled = applyStyles(documentXml, profile);
-  writeText(parts, DOCUMENT, replaceSectPr(styled, buildSectPr(profile.page, refs)));
+  const restored = readText(parts, DOCUMENT)!;
+  writeText(parts, DOCUMENT, injectBreaks(restored, breaks));
 
-  pointAttachedTemplate(parts, profile.attachedTemplate);
+  pointAttachedTemplate(parts, profile.snapshot.attachedTemplate);
   writeMarker(parts, profile.id);
 
-  return zip(parts);
+  return { kind: 'restored', bytes: zip(parts) };
 }

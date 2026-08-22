@@ -1,73 +1,78 @@
-// the state machine over off / lay, plus the profile in force.
-// off means off: no stylesheet, nothing injected, nothing watched.
+// off / lay, and the profile in force.
+//
+// the rule this file exists to enforce: **screen state and file state are
+// independent, and a failed file read may never change what is on screen.**
+//
+// the previous version derived lay from a file read. opening the panel called
+// `syncTo(marker)`, a marker of null called `leaveLay()`, and any document
+// whose path would not resolve was silently switched off — while its
+// stylesheet stayed on the page. the toggle then read "off" and turned it
+// back on, which is why turning lay off never put the fonts back.
 
 import { applyStylesheet, hasStylesheet, removeStylesheet, toCss } from './render/css.js';
-import { clearDraftMarks } from './render/draft-marks.js';
-import { ensureEmbeddedFonts, removeEmbeddedFonts } from './render/embedded-fonts.js';
-import { closePageView } from './render/page-view.js';
-import { DEFAULT_LAY } from './profile/defaults.js';
+import { clearBreakMarks } from './render/break-marks.js';
+import { closePreview } from './render/preview.js';
+import { DEFAULT_PROFILE } from './profile/defaults.js';
 import type { Profile } from './profile/profile.js';
 import type { Watcher } from './host/watcher.js';
 
-let active: string | null = null;
-let profile: Profile = DEFAULT_LAY;
+let active = false;
+let profile: Profile = DEFAULT_PROFILE;
 let watcher: Watcher | null = null;
 let watching: string | null = null;
 
 export const currentProfile = (): Profile => profile;
-export const activeProfile = (): string | null => active;
+export const isLay = (): boolean => active;
 
 /** swapping the profile restyles in place when lay is already on. */
-export function setProfile(next: Profile): void {
+export async function setProfile(next: Profile): Promise<void> {
   profile = next;
-  if (active !== null) {
-    applyStylesheet(toCss(profile));
-    active = next.id;
-  }
+  if (active) applyStylesheet(await toCss(profile));
 }
 
-/** main hands the save pipeline in once, at registration. lay decides when
- *  it runs — the off-state polls nothing at all. */
+/** main hands the save pipeline in once. lay decides when it runs — the
+ *  off-state polls nothing at all. */
 export function useWatcher(next: Watcher | null): void {
   watcher?.stop();
   watcher = next;
   watching = null;
 }
 
-function watchFile(path: string | null): void {
+export function watchFile(path: string | null): void {
   if (path === watching) return;
   watching = path;
-  if (path) watcher?.start(path);
+  if (path && active) watcher?.start(path);
   else watcher?.stop();
 }
 
-/** idempotent, so a poll can call it freely. */
-export function enterLay(profileId: string, path?: string | null): void {
+/** idempotent, so a poll or a re-registration can call it freely. */
+export async function enterLay(path?: string | null): Promise<void> {
   // the dom is the truth, not `active`: dev-loading the plugin again reruns
   // this module from scratch while the previous sheet stays in the head
-  if (active !== profileId || !hasStylesheet()) {
-    ensureEmbeddedFonts();
-    applyStylesheet(toCss(profile));
-    active = profileId;
+  if (!active || !hasStylesheet()) {
+    applyStylesheet(await toCss(profile));
+    active = true;
   }
-  watchFile(path ?? null);
+  if (path !== undefined) watchFile(path);
 }
 
-/** unconditional, for the same reason: `active` starts null after a reload
- *  but the sheet it describes may still be on the page, and turning lay off
- *  has to actually put the fonts back. */
+/** only ever called from an explicit user toggle. unconditional, because
+ *  `active` starts false after a reload while the sheet it describes may
+ *  still be on the page, and turning lay off has to actually put the fonts
+ *  back. */
 export function leaveLay(): void {
   removeStylesheet();
-  removeEmbeddedFonts();
-  clearDraftMarks();
-  closePageView();
-  active = null;
+  clearBreakMarks();
+  closePreview();
+  active = false;
   watching = null;
   watcher?.stop();
 }
 
-/** marker present -> lay, absent -> off. */
-export function syncTo(marker: string | null, path?: string | null): void {
-  if (marker) enterLay(marker, path);
-  else leaveLay();
+/** reconcile against what the file says. adoption only — a document whose
+ *  marker says lay turns lay on; a marker we could not read, or a file we
+ *  could not reach, changes nothing. */
+export async function adopt(marker: string | null, path: string | null): Promise<void> {
+  if (marker && !active) await enterLay(path);
+  else if (active) watchFile(path);
 }

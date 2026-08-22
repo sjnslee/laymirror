@@ -1,113 +1,95 @@
 // @vitest-environment jsdom
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { syncTo, enterLay, leaveLay, activeProfile, useWatcher } from '../src/lay.js';
-import { STYLE_ID } from '../src/render/css.js';
+import { describe, expect, it, beforeEach, vi } from 'vitest';
+import { adopt, enterLay, isLay, leaveLay, useWatcher, watchFile } from '../src/lay.js';
+import { applyStylesheet, hasStylesheet, removeStylesheet, STYLE_ID } from '../src/render/css.js';
 
-const styleEl = () => document.getElementById(STYLE_ID);
+const watcher = () => ({ start: vi.fn(), stop: vi.fn(), resync: vi.fn(async () => {}) });
 
-beforeEach(() => leaveLay());
+beforeEach(() => {
+  document.head.replaceChildren();
+  document.body.replaceChildren();
+  leaveLay();
+  useWatcher(null);
+});
 
-describe('lay state', () => {
-  it('injects nothing at all while off', () => {
-    syncTo(null);
-    expect(styleEl()).toBeNull();
-    expect(activeProfile()).toBeNull();
-    expect(document.head.querySelectorAll('style')).toHaveLength(0);
+describe('entering and leaving', () => {
+  it('starts off', () => {
+    expect(isLay()).toBe(false);
+    expect(hasStylesheet()).toBe(false);
   });
 
-  it('styles the editor when the document carries a marker', () => {
-    syncTo('sample-lay');
-    expect(activeProfile()).toBe('sample-lay');
-    expect(styleEl()?.textContent).toContain('Times New Roman');
-  });
-
-  it('leaves nothing behind when the marker is cleared', () => {
-    syncTo('sample-lay');
-    syncTo(null);
-    expect(styleEl()).toBeNull();
-    expect(activeProfile()).toBeNull();
-  });
-
-  it('is idempotent — repeated syncs do not stack stylesheets', () => {
-    syncTo('sample-lay');
-    syncTo('sample-lay');
-    enterLay('sample-lay');
-    expect(document.querySelectorAll(`#${STYLE_ID}`)).toHaveLength(1);
-  });
-
-  it('swaps cleanly between profiles', () => {
-    syncTo('sample-lay');
-    syncTo('other');
-    expect(activeProfile()).toBe('other');
-    expect(document.querySelectorAll(`#${STYLE_ID}`)).toHaveLength(1);
-  });
-
-  it('carries the fonts a lay template needs, and takes them away again', () => {
-    // garamond is on no mac and in no cardmirror bundle, so the plugin ships
-    // the face itself rather than letting the browser pick a serif
-    syncTo('sample-lay');
-    expect(document.getElementById('laymirror-fonts')).not.toBeNull();
-
-    syncTo(null);
-    expect(document.getElementById('laymirror-fonts')).toBeNull();
-  });
-
-  it('turns lay off even when the sheet outlived the module', () => {
-    // dev-loading the plugin again reruns this module with `active` back at
-    // null while the previous sheet is still in the head. off must still mean
-    // off, or the fonts never come back.
-    syncTo('sample-lay');
-    const orphan = styleEl()!;
+  it('turns on and off', async () => {
+    await enterLay();
+    expect(isLay()).toBe(true);
     leaveLay();
-    document.head.append(orphan);
-
-    syncTo(null);
-    expect(styleEl()).toBeNull();
+    expect(isLay()).toBe(false);
   });
 
-  it('restyles when the sheet went missing under it', () => {
-    syncTo('sample-lay');
-    styleEl()!.remove();
-    syncTo('sample-lay');
-    expect(styleEl()?.textContent).toContain('Times New Roman');
+  // dev-loading the plugin again reruns the module with `active` false while
+  // the previous sheet is still in the head
+  it('re-applies when the sheet is gone but state says on', async () => {
+    await enterLay();
+    removeStylesheet();
+    await enterLay();
+    expect(isLay()).toBe(true);
+  });
+
+  // this is the bug that made turning lay off never put the fonts back
+  it('leaving removes the stylesheet even when state was already off', () => {
+    applyStylesheet('.pmd-tag { color: red }');
+    leaveLay();
+    expect(document.getElementById(STYLE_ID)).toBeNull();
   });
 });
 
-describe('the watcher lay owns', () => {
-  const watcher = { start: vi.fn(), stop: vi.fn(), resync: vi.fn() };
-
-  beforeEach(() => {
-    useWatcher(watcher);
-    watcher.start.mockClear();
-    watcher.stop.mockClear();
-  });
-  afterEach(() => useWatcher(null));
-
-  it('polls nothing at all while off', () => {
-    syncTo(null);
-    expect(watcher.start).not.toHaveBeenCalled();
+describe('adopt', () => {
+  it('turns lay on when the file says lay', async () => {
+    await adopt('template:lay.docx', '/tmp/1ac.docx');
+    expect(isLay()).toBe(true);
   });
 
-  it('watches the document that carries the marker', () => {
-    syncTo('sample-lay', '/lay.docx');
-    expect(watcher.start).toHaveBeenCalledWith('/lay.docx');
+  // the whole point of the rule: reading a file must never switch the screen
+  // off. a failed read used to call leaveLay() and desynchronise everything
+  it('never turns lay off, whatever the file says', async () => {
+    await enterLay();
+    await adopt(null, null);
+    expect(isLay()).toBe(true);
   });
 
-  it('is torn down when the marker is cleared', () => {
-    syncTo('sample-lay', '/lay.docx');
-    syncTo(null);
-    expect(watcher.stop).toHaveBeenCalled();
+  it('leaves lay off when it was off and the file says nothing', async () => {
+    await adopt(null, '/tmp/1ac.docx');
+    expect(isLay()).toBe(false);
+  });
+});
+
+describe('watching', () => {
+  it('does not poll while lay is off', () => {
+    const w = watcher();
+    useWatcher(w);
+    watchFile('/tmp/1ac.docx');
+    expect(w.start).not.toHaveBeenCalled();
   });
 
-  it('does not restart on every sync of the same document', () => {
-    syncTo('sample-lay', '/lay.docx');
-    syncTo('sample-lay', '/lay.docx');
-    expect(watcher.start).toHaveBeenCalledTimes(1);
+  it('polls the file once lay is on', async () => {
+    const w = watcher();
+    useWatcher(w);
+    await enterLay('/tmp/1ac.docx');
+    expect(w.start).toHaveBeenCalledWith('/tmp/1ac.docx');
   });
 
-  it('follows the user to another lay document', () => {
-    syncTo('sample-lay', '/one.docx');
-    syncTo('sample-lay', '/two.docx');
-    expect(watcher.start).toHaveBeenLastCalledWith('/two.docx');
+  it('stops polling when lay is turned off', async () => {
+    const w = watcher();
+    useWatcher(w);
+    await enterLay('/tmp/1ac.docx');
+    leaveLay();
+    expect(w.stop).toHaveBeenCalled();
+  });
+
+  it('does not restart the watcher for the same path', async () => {
+    const w = watcher();
+    useWatcher(w);
+    await enterLay('/tmp/1ac.docx');
+    watchFile('/tmp/1ac.docx');
+    expect(w.start).toHaveBeenCalledTimes(1);
   });
 });

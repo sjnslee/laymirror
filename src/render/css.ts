@@ -1,25 +1,29 @@
-// profile -> editor stylesheet. the other half of `toOoxml`; both read the
-// same profile so the screen cannot disagree with the file.
+// work view typography.
 //
-// every declaration is !important because cardmirror writes its display
-// settings as inline custom properties on :root and #editor, and rewrites
-// them whenever the user touches appearance settings.
+// the editor gets the school's look by borrowing the same style resolver page
+// view uses. a probe document is built from the template's own styles.xml and
+// theme, rendered through docx-preview, and the stylesheet it emits is
+// harvested and re-pointed at cardmirror's classes.
+//
+// the point is that there is exactly one resolver. the previous build parsed
+// the donor into its own model for the editor and again for the file, so the
+// two could — and did — disagree: `basedOn` chains were never followed and
+// `majorHAnsi` never resolved, which is why the hat came out at the wrong
+// size with the wrong face.
 
-import { EDITOR_SELECTOR, CSS_VAR } from '../host/cardmirror.js';
-import type { BlockType, Profile, RunType, TypeSpec } from '../profile/profile.js';
+import { renderAsync } from 'docx-preview';
+import { TYPE_BY_EXPORT_STYLE, type BlockType, type RunType } from '../profile/mapping.js';
+import type { Profile } from '../profile/profile.js';
+import { toBlob, zip, writeText, type Parts } from '../docx/zip.js';
 
 export const STYLE_ID = 'laymirror-style';
 
-/** laymirror's own scope. page view is not inside the editor, and wearing
- *  cardmirror's pane class to borrow its rules brought its chrome too. */
-export const LAY_SCOPE = 'laymirror-flow';
+/** cardmirror's editor container, and the class page view wears so the same
+ *  rules reach both. */
+export const EDITOR_SCOPE = '#editor, .pmd-pane-editor';
 
-const SCOPE = `${EDITOR_SELECTOR}, .${LAY_SCOPE}`;
-
-/** class cardmirror puts on each block/mark. `paragraph` has no class of its
- *  own — it is a bare <p> inside the editor. */
-const SELECTOR: Record<BlockType | RunType, string> = {
-  paragraph: 'p',
+/** cardmirror's class for each of its own block types. */
+export const CLASS_BY_TYPE: Partial<Record<BlockType | RunType, string>> = {
   pocket: '.pmd-pocket',
   hat: '.pmd-hat',
   block: '.pmd-block',
@@ -28,139 +32,159 @@ const SELECTOR: Record<BlockType | RunType, string> = {
   undertag: '.pmd-undertag',
   cite_paragraph: '.pmd-cite-para',
   card_body: '.pmd-card-body',
-  underline_mark: '.pmd-underline',
-  emphasis_mark: '.pmd-emphasis',
-  cite_mark: '.pmd-cite',
-  analytic_mark: '.pmd-analytic-run',
-  undertag_mark: '.pmd-undertag-run',
 };
 
-const BLOCK_TYPES: readonly BlockType[] = [
-  'pocket',
-  'hat',
-  'block',
-  'tag',
-  'analytic',
-  'undertag',
-  'cite_paragraph',
-  'card_body',
-];
+const WML = 'http://schemas.openxmlformats.org/wordprocessingml/2006/main';
 
-/** which text type an element in the editor is, by the class cardmirror puts
- *  on it. read off the same table the stylesheet is built from, so the two
- *  cannot disagree about what a card body is. */
-export function blockTypeOf(el: Element): BlockType {
-  for (const type of BLOCK_TYPES) {
-    if (el.matches(SELECTOR[type])) return type;
+/** docx-preview names a style's class from its lowercased id. */
+const classFor = (styleId: string): string => `docx_${styleId.toLowerCase()}`;
+
+const CONTENT_TYPES =
+  '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+  '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">' +
+  '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>' +
+  '<Default Extension="xml" ContentType="application/xml"/>' +
+  '<Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/>' +
+  '<Override PartName="/word/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml"/>' +
+  '<Override PartName="/word/theme/theme1.xml" ContentType="application/vnd.openxmlformats-officedocument.theme+xml"/>' +
+  '</Types>';
+
+const ROOT_RELS =
+  '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+  '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">' +
+  '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/>' +
+  '</Relationships>';
+
+const DOC_RELS =
+  '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+  '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">' +
+  '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>' +
+  '<Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/theme" Target="theme/theme1.xml"/>' +
+  '</Relationships>';
+
+/** one paragraph per style we care about, so the renderer is obliged to emit
+ *  a rule for each. */
+export function probeDocument(styleIds: readonly string[]): string {
+  const body = styleIds
+    .map(
+      (id) =>
+        `<w:p><w:pPr><w:pStyle w:val="${id}"/></w:pPr><w:r><w:t>probe</w:t></w:r></w:p>`,
+    )
+    .join('');
+  return (
+    '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+    `<w:document xmlns:w="${WML}"><w:body>${body}<w:sectPr/></w:body></w:document>`
+  );
+}
+
+function probePackage(profile: Profile, styleIds: readonly string[]): Uint8Array {
+  const parts: Parts = {};
+  writeText(parts, '[Content_Types].xml', CONTENT_TYPES);
+  writeText(parts, '_rels/.rels', ROOT_RELS);
+  writeText(parts, 'word/_rels/document.xml.rels', DOC_RELS);
+  writeText(parts, 'word/document.xml', probeDocument(styleIds));
+
+  const snapshot = profile.snapshot;
+  writeText(parts, 'word/styles.xml', snapshot?.parts['word/styles.xml'] ?? '<w:styles/>');
+  const theme = snapshot?.parts['word/theme/theme1.xml'];
+  if (theme) writeText(parts, 'word/theme/theme1.xml', theme);
+  return zip(parts);
+}
+
+/** template style id -> the cardmirror class its rules should land on. */
+export function targetsFor(profile: Profile): Map<string, string> {
+  const targets = new Map<string, string>();
+  for (const [exportId, templateId] of Object.entries(profile.styleMap)) {
+    const type = TYPE_BY_EXPORT_STYLE[exportId];
+    const className = type ? CLASS_BY_TYPE[type] : undefined;
+    if (className) targets.set(templateId, className);
   }
-  return 'paragraph';
+  for (const [type, styleId] of Object.entries(profile.bareStyles)) {
+    const className = CLASS_BY_TYPE[type as BlockType];
+    if (styleId && className) targets.set(styleId, className);
+  }
+  return targets;
 }
 
-const dxaToIn = (dxa: number) => `${(dxa / 1440).toFixed(4)}in`;
-
-/** what a family is actually drawn in: the profile's substitute for it, or
- *  the family itself. the single answer to that question — the settings ui
- *  asks it too. */
-export function fontStackFor(profile: Profile, family: string): string {
-  return profile.fontFallbacks[family] ?? `"${family}", serif`;
+interface Rule {
+  selector: string;
+  body: string;
 }
 
-function fontStack(spec: TypeSpec, profile: Profile): string | null {
-  return spec.font ? fontStackFor(profile, spec.font) : null;
+export function parseRules(css: string): Rule[] {
+  const rules: Rule[] = [];
+  // the emitted sheet is flat — no at-rules wrap the style rules we want
+  for (const match of css.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
+    const selector = match[1]!.replace(/\s+/g, ' ').trim();
+    const body = match[2]!.replace(/\s+/g, ' ').trim();
+    if (selector && body && !selector.startsWith('@')) rules.push({ selector, body });
+  }
+  return rules;
 }
 
-function declarations(spec: TypeSpec, profile: Profile): string[] {
+/** re-point docx-preview's selectors at cardmirror's classes, and scope the
+ *  result to the editor so nothing leaks into the rest of the app. */
+export function retarget(css: string, targets: Map<string, string>): string {
   const out: string[] = [];
-  const push = (prop: string, value: string) => out.push(`  ${prop}: ${value} !important;`);
 
-  const font = fontStack(spec, profile);
-  if (font) push('font-family', font);
-  if (spec.sizePt !== undefined) push('font-size', `${spec.sizePt}pt`);
-  if (spec.bold !== undefined) push('font-weight', spec.bold ? '700' : '400');
-  if (spec.italic !== undefined) push('font-style', spec.italic ? 'italic' : 'normal');
-  if (spec.smallCaps) push('font-variant-caps', 'small-caps');
-  if (spec.color) push('color', `#${spec.color}`);
-  if (spec.align) push('text-align', spec.align);
+  // the theme variables the rules reference have to come along, or every
+  // `var(--docx-majorHAnsi-font)` resolves to nothing
+  const variables = /\.docx\s*\{([^}]*--docx-[^}]*)\}/.exec(css)?.[1];
+  if (variables) out.push(`${EDITOR_SCOPE} { ${variables.replace(/\s+/g, ' ').trim()} }`);
 
-  if (spec.underline !== undefined) {
-    if (spec.underline === 'none') {
-      push('text-decoration', 'none');
-    } else {
-      push('text-decoration', spec.underline === 'double' ? 'underline double' : 'underline');
-      // word's "thick" is a heavier rule, not a second line
-      if (spec.underline === 'thick') push('text-decoration-thickness', '2px');
+  for (const rule of parseRules(css)) {
+    for (const [styleId, className] of targets) {
+      const token = classFor(styleId);
+      if (!new RegExp(`\\.${token}\\b`).test(rule.selector)) continue;
+      // a docx paragraph's run properties live on its spans; cardmirror puts
+      // the text directly in the block, so both have to be covered
+      const scoped = rule.selector.includes('span')
+        ? `:is(${EDITOR_SCOPE}) ${className}, :is(${EDITOR_SCOPE}) ${className} span`
+        : `:is(${EDITOR_SCOPE}) ${className}`;
+      out.push(`${scoped} { ${rule.body} }`);
+      break;
     }
   }
 
-  if (spec.indentLeftDxa !== undefined) push('margin-left', dxaToIn(spec.indentLeftDxa));
-  if (spec.indentRightDxa !== undefined) push('margin-right', dxaToIn(spec.indentRightDxa));
-  if (spec.spaceBeforePt !== undefined) push('margin-top', `${spec.spaceBeforePt}pt`);
-  if (spec.spaceAfterPt !== undefined) push('margin-bottom', `${spec.spaceAfterPt}pt`);
-
-  if (spec.lineSpacing) {
-    // w:line is 240ths of a line for the auto rule, otherwise twips
-    const { rule, value } = spec.lineSpacing;
-    push('line-height', rule === 'auto' ? (value / 240).toFixed(3) : `${value / 20}pt`);
-  }
-
-  return out;
+  return out.join('\n');
 }
 
-/** cardmirror keys parts of its own chrome off these, so they are kept in
- *  step with the rules rather than left saying something else. */
-function variables(profile: Profile): string {
-  const t = profile.types;
-  const pairs: [string, string | undefined][] = [
-    [CSS_VAR.sizeNormal, t.paragraph.sizePt ? `${t.paragraph.sizePt}pt` : undefined],
-    [CSS_VAR.sizePocket, t.pocket.sizePt ? `${t.pocket.sizePt}pt` : undefined],
-    [CSS_VAR.sizeHat, t.hat.sizePt ? `${t.hat.sizePt}pt` : undefined],
-    [CSS_VAR.sizeBlock, t.block.sizePt ? `${t.block.sizePt}pt` : undefined],
-    [CSS_VAR.sizeTag, t.tag.sizePt ? `${t.tag.sizePt}pt` : undefined],
-    [CSS_VAR.sizeAnalytic, t.analytic.sizePt ? `${t.analytic.sizePt}pt` : undefined],
-    [CSS_VAR.sizeCite, t.cite_paragraph.sizePt ? `${t.cite_paragraph.sizePt}pt` : undefined],
-    [CSS_VAR.sizeUnderline, t.underline_mark.sizePt ? `${t.underline_mark.sizePt}pt` : undefined],
-    [CSS_VAR.sizeUndertag, t.undertag.sizePt ? `${t.undertag.sizePt}pt` : undefined],
-    [CSS_VAR.bodyFont, fontStack(t.card_body, profile) ?? undefined],
-  ];
-  const body = pairs
-    .filter((p): p is [string, string] => p[1] !== undefined)
-    .map(([name, value]) => `  ${name}: ${value};`)
-    .join('\n');
-  return `${SCOPE} {\n${body}\n}`;
-}
+/** build the editor stylesheet for a profile. resolves to '' when the profile
+ *  has no template, which is the honest answer — there is nothing to show. */
+export async function toCss(profile: Profile): Promise<string> {
+  const targets = targetsFor(profile);
+  if (targets.size === 0 || !profile.snapshot) return '';
 
-export function toCss(profile: Profile): string {
-  const blocks: string[] = [
-    `/* laymirror — ${profile.name} */`,
-    variables(profile),
-  ];
-
-  for (const [type, selector] of Object.entries(SELECTOR) as [BlockType | RunType, string][]) {
-    const decls = declarations(profile.types[type], profile);
-    if (decls.length === 0) continue;
-    // :is() keeps the editor scope without inflating specificity per selector
-    blocks.push(`:is(${SCOPE}) ${selector} {\n${decls.join('\n')}\n}`);
+  const container = document.createElement('div');
+  const styleContainer = document.createElement('div');
+  try {
+    await renderAsync(
+      toBlob(probePackage(profile, [...targets.keys()])),
+      container,
+      styleContainer,
+      { inWrapper: false, breakPages: false, renderHeaders: false, renderFooters: false },
+    );
+  } catch {
+    // a template we cannot render is a template we cannot style from; work
+    // view simply stays as cardmirror draws it
+    return '';
   }
 
-  return blocks.join('\n\n') + '\n';
+  return retarget(styleContainer.textContent ?? '', targets);
 }
 
 export function applyStylesheet(css: string): void {
-  let el = document.getElementById(STYLE_ID) as HTMLStyleElement | null;
-  if (!el) {
-    el = document.createElement('style');
-    el.id = STYLE_ID;
-    document.head.appendChild(el);
+  let sheet = document.getElementById(STYLE_ID) as HTMLStyleElement | null;
+  if (!sheet) {
+    sheet = document.createElement('style');
+    sheet.id = STYLE_ID;
+    document.head.appendChild(sheet);
   }
-  el.textContent = css;
+  sheet.textContent = css;
 }
 
-export function hasStylesheet(): boolean {
-  return document.getElementById(STYLE_ID) !== null;
-}
+export const hasStylesheet = (): boolean => document.getElementById(STYLE_ID) !== null;
 
-/** the off-state must leave nothing behind. every match, not the first —
- *  a reloaded plugin can find one it did not put there. */
 export function removeStylesheet(): void {
-  for (const el of document.querySelectorAll(`#${STYLE_ID}`)) el.remove();
+  document.getElementById(STYLE_ID)?.remove();
 }

@@ -1,84 +1,121 @@
 // @vitest-environment jsdom
-import { describe, it, expect } from 'vitest';
-import { toCss, applyStylesheet, removeStylesheet, STYLE_ID } from '../src/render/css.js';
-import { DEFAULT_LAY } from '../src/profile/defaults.js';
-import { readTemplate } from '../src/profile/read-template.js';
-import { makeTemplate } from './fixture.js';
+import { describe, expect, it } from 'vitest';
+import {
+  applyStylesheet,
+  hasStylesheet,
+  parseRules,
+  probeDocument,
+  removeStylesheet,
+  retarget,
+  STYLE_ID,
+  targetsFor,
+} from '../src/render/css.js';
+import { DEFAULT_PROFILE } from '../src/profile/defaults.js';
+import type { Profile } from '../src/profile/profile.js';
 
-// a donor-derived profile exercises the interesting cases — theme fonts,
-// thick rules, real indents — which the deliberately plain default has none of
-const donor = readTemplate(makeTemplate(), DEFAULT_LAY).profile;
-const css = toCss(donor);
+const profile = (over: Partial<Profile> = {}): Profile => ({
+  ...DEFAULT_PROFILE,
+  id: 'template:lay.docx',
+  ...over,
+});
 
-/** the block of declarations for one selector. */
-function ruleFor(selector: string): string {
-  const idx = css.indexOf(`) ${selector} {`);
-  if (idx === -1) throw new Error(`no rule emitted for ${selector}`);
-  return css.slice(idx, css.indexOf('}', idx));
-}
-
-describe('toCss', () => {
-  it('gives each type the donor font', () => {
-    expect(ruleFor('.pmd-tag')).toContain('Palatino Linotype');
-    expect(ruleFor('.pmd-pocket')).toContain('Tinos'); // times new roman substitute
-    expect(ruleFor('.pmd-card-body')).toContain('Caladea'); // cambria substitute
+describe('probeDocument', () => {
+  it('names every style so the renderer must emit a rule for it', () => {
+    const xml = probeDocument(['Tag', 'Cite']);
+    expect(xml).toContain('w:val="Tag"');
+    expect(xml).toContain('w:val="Cite"');
   });
 
-  it('renders the pocket as a centred small-caps heading', () => {
-    const rule = ruleFor('.pmd-pocket');
-    expect(rule).toContain('font-size: 20pt');
-    expect(rule).toContain('font-variant-caps: small-caps');
-    expect(rule).toContain('text-align: center');
-    expect(rule).toContain('font-weight: 700');
-  });
-
-  it('gives the cite a thick rule rather than a double one', () => {
-    const rule = ruleFor('.pmd-cite-para');
-    expect(rule).toContain('text-decoration: underline');
-    expect(rule).toContain('text-decoration-thickness: 2px');
-    expect(rule).not.toContain('double');
-  });
-
-  it('leaves the hat black — word stock accent blue is not a lay choice', () => {
-    expect(ruleFor('.pmd-hat')).not.toContain('color: #');
-    expect(ruleFor('.pmd-block')).toContain('color: #7A0019');
-  });
-
-  it('indents the card body by the donor 288 dxa', () => {
-    const rule = ruleFor('.pmd-card-body');
-    expect(rule).toContain('margin-left: 0.2000in');
-    expect(rule).toContain('margin-right: 0.2000in');
-    expect(rule).toContain('line-height: 1.079');
-  });
-
-  it('marks every declaration important so appearance settings cannot win', () => {
-    const decls = css.match(/^\s{2}[a-z-]+:[^;]+;$/gm) ?? [];
-    const notImportant = decls.filter((d) => !d.includes('!important') && !d.includes('--pmd-'));
-    expect(notImportant).toEqual([]);
-  });
-
-  it('keeps cardmirror own variables in step with the rules', () => {
-    expect(css).toContain('--pmd-size-tag: 10pt');
-    expect(css).toContain('--pmd-size-pocket: 20pt');
-  });
-
-  it('scopes everything to the editor', () => {
-    const selectors = css.match(/^[^\s@/].*\{$/gm) ?? [];
-    expect(selectors.every((s) => s.includes('#editor') || s.includes('.pmd-pane-editor'))).toBe(true);
+  it('is still a valid body when nothing is asked for', () => {
+    expect(probeDocument([])).toContain('<w:body>');
   });
 });
 
-describe('stylesheet injection', () => {
-  it('applies, updates in place, and leaves nothing behind', () => {
-    applyStylesheet(css);
-    expect(document.getElementById(STYLE_ID)?.textContent).toContain('laymirror');
+describe('targetsFor', () => {
+  it('points a mapped style at cardmirror class', () => {
+    const targets = targetsFor(
+      profile({ styleMap: { Heading4: 'Tag', Heading2: 'Heading2' } }),
+    );
+    expect(targets.get('Tag')).toBe('.pmd-tag');
+    expect(targets.get('Heading2')).toBe('.pmd-hat');
+  });
 
-    applyStylesheet('/* second */');
+  it('includes the two bare types', () => {
+    const targets = targetsFor(
+      profile({ bareStyles: { cite_paragraph: 'Cite', card_body: 'card' } }),
+    );
+    expect(targets.get('Cite')).toBe('.pmd-cite-para');
+    expect(targets.get('card')).toBe('.pmd-card-body');
+  });
+
+  it('is empty without a template', () => {
+    expect(targetsFor(DEFAULT_PROFILE).size).toBe(0);
+  });
+});
+
+describe('parseRules', () => {
+  it('splits a flat sheet into selectors and bodies', () => {
+    expect(parseRules('a { color: red } b { font-size: 2pt }')).toEqual([
+      { selector: 'a', body: 'color: red' },
+      { selector: 'b', body: 'font-size: 2pt' },
+    ]);
+  });
+
+  it('drops empty rules', () => {
+    expect(parseRules('a { }')).toEqual([]);
+  });
+});
+
+describe('retarget', () => {
+  // docx-preview names a style class from its lowercased id
+  const css =
+    '.docx { --docx-majorHAnsi-font: Calibri; --docx-accent1-color: #4F81BD; }\n' +
+    'p.docx_tag span { font-weight: bold; font-size: 10.00pt }\n' +
+    'p.docx_heading2 span { font-family: var(--docx-majorHAnsi-font); color: #4F81BD }\n' +
+    'p.docx_unrelated span { color: green }';
+
+  const targets = new Map([
+    ['Tag', '.pmd-tag'],
+    ['Heading2', '.pmd-hat'],
+  ]);
+
+  it('re-points a style rule at cardmirror class', () => {
+    const out = retarget(css, targets);
+    expect(out).toContain('.pmd-tag');
+    expect(out).toContain('font-weight: bold');
+  });
+
+  // without these every var(--docx-majorHAnsi-font) resolves to nothing
+  it('carries the theme variables across', () => {
+    expect(retarget(css, targets)).toContain('--docx-majorHAnsi-font: Calibri');
+  });
+
+  it('scopes everything to the editor so nothing leaks', () => {
+    for (const line of retarget(css, targets).split('\n')) {
+      expect(line).toContain('#editor');
+    }
+  });
+
+  it('ignores styles nothing maps to', () => {
+    expect(retarget(css, targets)).not.toContain('green');
+  });
+
+  it('covers the block itself as well as its spans', () => {
+    // a docx paragraph carries run properties on spans; cardmirror puts the
+    // text straight in the block
+    const out = retarget('p.docx_tag span { font-weight: bold }', targets);
+    expect(out).toMatch(/\.pmd-tag,[^{]*\.pmd-tag span/);
+  });
+});
+
+describe('the stylesheet element', () => {
+  it('installs, replaces and removes cleanly', () => {
+    applyStylesheet('.pmd-tag { color: red }');
+    expect(hasStylesheet()).toBe(true);
+    applyStylesheet('.pmd-tag { color: blue }');
     expect(document.querySelectorAll(`#${STYLE_ID}`)).toHaveLength(1);
-    expect(document.getElementById(STYLE_ID)?.textContent).toBe('/* second */');
-
+    expect(document.getElementById(STYLE_ID)!.textContent).toContain('blue');
     removeStylesheet();
-    expect(document.getElementById(STYLE_ID)).toBeNull();
-    removeStylesheet(); // idempotent
+    expect(hasStylesheet()).toBe(false);
   });
 });

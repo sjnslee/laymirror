@@ -12,9 +12,9 @@ const options = {
   platform: 'browser',
   target: 'chrome120', // electron 42
   sourcemap: false,
-  legalComments: 'none',
-  // the plugin is one file, so a font it carries has to be inside it
-  loader: { '.woff2': 'dataurl' },
+  // docx-preview is apache-2.0 and its licence requires the notice to travel
+  // with the code, so licence comments stay in the bundle
+  legalComments: 'inline',
 };
 
 if (watch) {

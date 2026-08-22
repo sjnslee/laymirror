@@ -34,3 +34,12 @@ export function readText(parts: Parts, name: string): string | null {
 export function writeText(parts: Parts, name: string, xml: string): void {
   parts[name] = strToU8(xml);
 }
+
+/** a Blob of a docx package, for anything that wants the file rather than the
+ *  parts. the copy is deliberate: a view onto a larger buffer would hand the
+ *  reader the wrong bytes. */
+export function toBlob(bytes: Uint8Array): Blob {
+  const copy = new Uint8Array(bytes.length);
+  copy.set(bytes);
+  return new Blob([copy.buffer]);
+}
