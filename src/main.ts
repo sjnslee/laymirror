@@ -141,8 +141,15 @@ async function onSaved(api: PluginApi, path: string): Promise<void> {
 
   if (outcome.kind === 'adopted') {
     // word wrote this file, so its header is the truth — take it, and every
-    // later cardmirror save restores what the user actually typed
-    bag.setProfile({ ...profile, snapshot: outcome.snapshot });
+    // later cardmirror save restores what the user actually typed. a document
+    // that already looks right is a template in its own right, so one marked
+    // before any template was loaded teaches laymirror its own format.
+    const adopted =
+      profile.snapshot || !key
+        ? { ...profile, snapshot: outcome.snapshot }
+        : { ...profile, id: `document:${key}`, name: key, snapshot: outcome.snapshot };
+    bag.setProfile(adopted);
+    if (key) bag.setDoc(key, { profileId: adopted.id });
     return;
   }
   if (outcome.kind === 'skipped') return;
