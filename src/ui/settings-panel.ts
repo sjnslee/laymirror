@@ -176,7 +176,14 @@ export function openPanel(hooks: PanelHooks): void {
     for (const action of hooks.actions) {
       const button = el('button', action.label);
       button.addEventListener('click', () => {
-        action.run();
+        // a throwing action must not leave the panel stale and unresponsive —
+        // that is indistinguishable from the button doing nothing
+        try {
+          action.run();
+        } catch (err) {
+          console.error(`[laymirror] ${action.label} failed`, err);
+          notice = { text: `${action.label} failed — ${String(err)}`, warn: true };
+        }
         render();
       });
       actions.append(button);
