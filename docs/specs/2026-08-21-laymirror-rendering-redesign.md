@@ -294,10 +294,57 @@ licence. `THIRD-PARTY-NOTICES.md` gains docx-preview's attribution.
 | the snapshot grows plugin storage | store one snapshot per document, capped, evicted with the marker |
 | a school template with no header at all | fall back to carrying nothing; do not synthesise |
 
-## open questions
+## manual page breaks
 
-- should page view offer to save when the editor is dirty, or refuse
-  and say so? refusing is simpler and never surprises
-- manual page breaks still ride through cardmirror as the literal text
-  `[page break]`, which is visible in work view. acceptable, or hide it
-- do we keep a per-document profile, or one profile per install
+the `[page break]` text sentinel is deleted. it was never defensible:
+it is visible in work view, it pollutes extraction and search, and any
+stray edit corrupts it.
+
+cardmirror cannot carry a page break at all. its own comments say so:
+
+> `<w:br/>`: page-type breaks and plain line breaks both import as a
+> newline (no hard-page-break support). — `src/import/importer.ts:771`
+
+> the doc model keeps the break but not its type.
+> — `src/export/exporter.ts:611`
+
+and `<w:pageBreakBefore/>` is dropped by both. so **no in-document
+representation can survive a round-trip**, and a break must be held
+out-of-band. what makes that safe is that cardmirror already mints a
+durable anchor: per `src/schema/ids.ts`, pocket / hat / block / tag /
+analytic each carry a uuid that "survives edits and round-trips to docx
+as a `pmd-heading-<uuid>` bookmark", written as real `bookmarkStart` /
+`bookmarkEnd` pairs.
+
+**model.** a break is `{ headingId, offset }` — before the block
+`offset` positions after the heading owning `headingId`; `offset: 0`
+means before that heading's own paragraph. stored per document beside
+the profile, never in the document.
+
+**authoring.** the caret's block is found through the dom, and the
+nearest preceding element carrying `data-id` supplies the anchor —
+cardmirror's `toDOM` puts the uuid there, so no prosemirror internals
+are touched. running the command on an existing break removes it.
+
+**injection.** on save, each anchor is resolved by locating its
+bookmark in `document.xml`, walking forward `offset` block siblings,
+and inserting `<w:p><w:r><w:br w:type="page"/></w:r></w:p>` before the
+target. that is the form word's ctrl+enter produces, and the only form
+docx-preview honours — it reads `pageBreakBefore` from a paragraph's
+*style* only and explicitly ignores a direct one in `pPr`
+(`docx-preview.mjs:2479, 3202`). an anchor whose bookmark is gone is
+dropped rather than guessed at.
+
+**display.** work view draws what word's draft view draws: a dotted
+rule labelled *Page Break*, as an overlay above the anchored block.
+nothing is written into the document.
+
+## resolved
+
+- **page view with a dirty editor: refuse.** it renders the file on
+  disk; offering to save would make a preview command mutate the
+  document. it says the editor has unsaved changes and stops
+- **manual page breaks: out-of-band, per above**
+- **profile scope: per document, defaulting to the last one used.** a
+  new document adopts the most recently applied profile, then keeps its
+  own. two schools' documents can be open at once
