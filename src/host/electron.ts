@@ -19,7 +19,11 @@ export interface ReadFile {
 
 interface ElectronApi {
   statFile(path: string): Promise<FileStat | null>;
-  openExternal?(target: string): Promise<unknown>;
+  pickFile?(opts?: {
+    defaultPath?: string;
+    title?: string;
+    filters?: { name: string; extensions: string[] }[];
+  }): Promise<unknown>;
   readFileAtPath(path: string): Promise<ReadFile | null>;
   writeFileAtPath(
     path: string,
@@ -63,8 +67,16 @@ export async function writeFile(
   return a.writeFileAtPath(path, bytes, opts);
 }
 
-/** hand the file to word. the only perfectly faithful preview there will ever
- *  be — no emulation, because it is word doing the laying out. */
-export async function openExternal(path: string): Promise<void> {
-  await api()?.openExternal?.(path.startsWith('file:') ? path : `file://${path}`);
+/** ask the user which file, for when we cannot work out the path ourselves.
+ *  cardmirror gives a plugin no reliable way to ask which document is open —
+ *  `docInfo()` is null until a doc id is minted, and the recent-files list is
+ *  a history — so rather than fail, laymirror asks. */
+export async function pickDocx(title: string): Promise<string | null> {
+  const picked = await api()?.pickFile?.({
+    title,
+    filters: [{ name: 'Word document', extensions: ['docx'] }],
+  });
+  if (typeof picked === 'string') return picked;
+  const record = picked as { handle?: string; path?: string; filePath?: string } | null;
+  return record?.handle ?? record?.path ?? record?.filePath ?? null;
 }

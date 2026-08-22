@@ -51,6 +51,37 @@ export function toggleBreak(breaks: readonly PageBreak[], mark: PageBreak): Page
   return without.length === breaks.length ? [...breaks, mark] : without;
 }
 
+// clicking a button in the panel moves focus out of the editor, so by the
+// time a command runs the selection is gone. the caret is therefore
+// remembered as it moves, and commands use the remembered one.
+let remembered: HTMLElement | null = null;
+let onSelectionChange: (() => void) | null = null;
+
+export function rememberCaret(editor: Element): void {
+  forgetCaret();
+  onSelectionChange = () => {
+    const block = blockAtCaret(editor);
+    if (block) remembered = block;
+  };
+  editor.ownerDocument.addEventListener('selectionchange', onSelectionChange);
+  onSelectionChange();
+}
+
+export function forgetCaret(): void {
+  if (onSelectionChange) {
+    document.removeEventListener('selectionchange', onSelectionChange);
+    onSelectionChange = null;
+  }
+  remembered = null;
+}
+
+/** the caret's block now, or the last one it was in. */
+export function caretBlock(editor: Element): HTMLElement | null {
+  const live = blockAtCaret(editor);
+  if (live) return live;
+  return remembered && editor.contains(remembered) ? remembered : null;
+}
+
 /** the block containing the caret. */
 export function blockAtCaret(editor: Element): HTMLElement | null {
   const selection = editor.ownerDocument.defaultView?.getSelection();

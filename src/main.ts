@@ -4,16 +4,17 @@
 // until a document is marked as lay.
 
 import { register, type PluginApi } from './host/plugin-api.js';
-import { hasFileApi, openExternal, readFile, writeFile } from './host/electron.js';
+import { hasFileApi, pickDocx, readFile, writeFile } from './host/electron.js';
 import { resolveDocPath } from './host/paths.js';
 import { currentFilename, EDITOR_SELECTOR } from './host/cardmirror.js';
-import { isDirty, markClean, watchEdits } from './host/dirty.js';
 import {
   anchorFor,
-  blockAtCaret,
+  caretBlock,
   editorBlocks,
+  rememberCaret,
   toggleBreak,
 } from './host/anchors.js';
+import { openDiagnostics } from './ui/diagnose.js';
 import { watchSaves, type Watcher } from './host/watcher.js';
 import { zip, unzip, isDocx, type Parts } from './docx/zip.js';
 import { readMarker, writeMarker, clearMarker } from './docx/marker.js';
@@ -122,7 +123,6 @@ function profileFor(api: PluginApi): Profile {
 /** the save pipeline: cardmirror has rebuilt the file from scratch, so put
  *  the school's document back onto it. */
 async function onSaved(api: PluginApi, path: string): Promise<void> {
-  markClean();
   const file = await readFile(path);
   if (!file) return;
 
@@ -196,31 +196,31 @@ async function showPageView(api: PluginApi): Promise<void> {
     return;
   }
 
-  // page view renders the file on disk. saving on the user's behalf would
-  // make a preview command change their document, so it says so and stops.
-  if (isDirty()) {
-    api.showToast('save first — page view shows the document as it is on disk');
-    return;
-  }
-
+  // page view renders a file, and working out which file is the one thing
+  // cardmirror gives a plugin no reliable way to do. rather than refuse, fall
+  // back to asking — a preview that always opens beats one that is right
+  // about why it cannot.
   const located = locate(api);
-  if ('error' in located) {
-    api.showToast(located.error);
+  const path =
+    'path' in located ? located.path : await pickDocx('which document should laymirror lay out?');
+  if (!path) {
+    api.showToast('error' in located ? located.error : 'no document chosen');
     return;
   }
 
-  const file = await readFile(located.path);
+  const file = await readFile(path);
   if (!file) {
-    api.showToast('could not read the document — reopen it and try again');
+    api.showToast(`could not read ${path}`);
     return;
   }
 
   try {
-    await openPreview(file.bytes, {
-      onOpenInWord: () => void openExternal(located.path),
-    });
-  } catch {
-    api.showToast('laymirror could not lay this document out');
+    await openPreview(file.bytes);
+  } catch (err) {
+    // say what actually went wrong: a silent failure here is indistinguishable
+    // from the command not running at all
+    api.showToast(`page view failed — ${err instanceof Error ? err.message : String(err)}`);
+    console.error('[laymirror] page view failed', err);
   }
 }
 
@@ -249,7 +249,7 @@ function togglePageBreak(api: PluginApi): void {
     return;
   }
 
-  const block = blockAtCaret(host);
+  const block = caretBlock(host);
   if (!block) {
     api.showToast('put the cursor where the page should break');
     return;
@@ -281,7 +281,7 @@ function togglePageBreak(api: PluginApi): void {
 async function openLaymirror(api: PluginApi): Promise<void> {
   ensureWatcher(api);
   const host = editor();
-  if (host) watchEdits(host);
+  if (host) rememberCaret(host);
 
   const found = resolveDocPath(api.docInfo());
   const path = found.kind === 'ok' ? found.path : null;
@@ -317,14 +317,7 @@ async function openLaymirror(api: PluginApi): Promise<void> {
       { label: 'page view', run: () => void showPageView(api) },
       { label: 'page break marks', run: () => toggleBreakMarks(api) },
       { label: 'insert page break', run: () => togglePageBreak(api) },
-      {
-        label: 'open in word',
-        run: () => {
-          const located = locate(api);
-          if ('error' in located) api.showToast(located.error);
-          else void openExternal(located.path);
-        },
-      },
+      { label: 'diagnostics', run: () => void openDiagnostics(api) },
     ],
   });
 }
@@ -356,6 +349,12 @@ register({
       keywords: ['page', 'break'],
       defaultKey: 'Mod-Alt-Enter',
       run: (api) => togglePageBreak(api),
+    },
+    {
+      id: `${ID}.diagnose`,
+      label: 'laymirror: diagnostics',
+      keywords: ['debug', 'diagnose', 'why'],
+      run: (api) => openDiagnostics(api),
     },
     {
       id: `${ID}.toggle-lay`,
