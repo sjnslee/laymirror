@@ -1,75 +1,39 @@
-// one profile, rendered two ways: toCss for the editor, toOoxml for the file.
-// they read the same object so the screen cannot lie about the file.
+// a profile is the school's document identity plus the vocabulary bridge to
+// it. nothing here describes typography: the template's own styles.xml and
+// theme travel verbatim inside the snapshot, so word sees the school's styles
+// rather than our reconstruction of them.
 
-export type BlockType =
-  | 'pocket'
-  | 'hat'
-  | 'block'
-  | 'tag'
-  | 'analytic'
-  | 'undertag'
-  | 'cite_paragraph'
-  | 'card_body'
-  | 'paragraph';
+import type { Snapshot } from '../docx/snapshot.js';
 
-export type RunType =
-  | 'underline_mark'
-  | 'emphasis_mark'
-  | 'cite_mark'
-  | 'analytic_mark'
-  | 'undertag_mark';
-
-export interface TypeSpec {
-  /** styleId written into document.xml. */
-  styleId: string;
-  /** w:name — what cardmirror's legacy remapper reads back on import.
-   *  changing this silently breaks round-trip. */
-  styleName: string;
-  font?: string;
-  sizePt?: number;
-  bold?: boolean;
-  italic?: boolean;
-  underline?: 'none' | 'single' | 'thick' | 'double';
-  smallCaps?: boolean;
-  /** hex6, no leading '#'. */
-  color?: string;
-  align?: 'left' | 'center' | 'right' | 'justify';
-  indentLeftDxa?: number;
-  indentRightDxa?: number;
-  spaceBeforePt?: number;
-  spaceAfterPt?: number;
-  lineSpacing?: { rule: 'auto' | 'exact' | 'atLeast'; value: number };
-  pageBreakBefore?: boolean;
-  keepNext?: boolean;
-  keepLines?: boolean;
-  outlineLevel?: number | null;
-}
-
-export interface PageSetup {
-  widthTwips: number;
-  heightTwips: number;
-  margin: {
-    top: number;
-    right: number;
-    bottom: number;
-    left: number;
-    header: number;
-    footer: number;
-  };
+export interface StyleInfo {
+  id: string;
+  name: string;
+  kind: 'paragraph' | 'character' | 'table' | 'numbering';
 }
 
 export interface Profile {
   id: string;
   name: string;
-  types: Record<BlockType | RunType, TypeSpec>;
-  page: PageSetup;
-  /** raw header1/footer1 xml from the donor, tokens unresolved. */
-  headerXml: string | null;
-  footerXml: string | null;
-  /** basename only, e.g. "Lay Cut Cards.dotx" — word only basename-matches,
-   *  and donors carry absolute paths through someone's home directory. */
-  attachedTemplate: string | null;
-  /** the donor's styles.xml, the base we merge into. */
-  donorStylesXml: string;
-  fontFallbacks: Record<string, string>;
+  /** the parts that make a document the school's, carried byte for byte. */
+  snapshot: Snapshot | null;
+  /** cardmirror's exported style id -> the id this template defines.
+   *  an id absent from the map is left as cardmirror wrote it. */
+  styleMap: Record<string, string>;
+  /** cite paragraphs and card bodies leave cardmirror with no `w:pStyle` at
+   *  all, so they cannot be remapped by id — they are recognised from the
+   *  marks their runs carry and given these ids instead. null leaves them as
+   *  the template's Normal. */
+  bareStyles: {
+    cite_paragraph: string | null;
+    card_body: string | null;
+  };
+  /** every style the template defines, so the panel can offer real choices
+   *  instead of asking the user to type an id. */
+  styles: StyleInfo[];
 }
+
+export const isProfile = (value: unknown): value is Profile =>
+  !!value &&
+  typeof value === 'object' &&
+  typeof (value as Profile).id === 'string' &&
+  typeof (value as Profile).name === 'string';

@@ -137,9 +137,17 @@ const DONOR_FOOTER =
   '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
   `<w:ftr xmlns:w="${WML}"><w:p><w:r><w:t>lay</w:t></w:r></w:p></w:ftr>`;
 
+const TEMPLATE_DOC_RELS =
+  '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+  `<Relationships xmlns="${PKG_REL_NS}">` +
+  `<Relationship Id="rId10" Type="${REL_NS}/header" Target="header1.xml"/>` +
+  `<Relationship Id="rId11" Type="${REL_NS}/footer" Target="footer1.xml"/>` +
+  '</Relationships>';
+
 /** a donor template as raw docx bytes. */
 export function makeTemplate(): Uint8Array {
   const parts = makeDocx();
+  writeText(parts, 'word/_rels/document.xml.rels', TEMPLATE_DOC_RELS);
   writeText(parts, 'word/document.xml', TEMPLATE_DOC);
   writeText(parts, 'word/styles.xml', STYLES);
   writeText(parts, 'word/theme/theme1.xml', THEME('Calibri', 'Cambria'));

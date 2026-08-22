@@ -4,40 +4,44 @@
 // until a document is marked as lay.
 
 import { register, type PluginApi } from './host/plugin-api.js';
-import { hasFileApi, readFile, writeFile } from './host/electron.js';
+import { hasFileApi, openExternal, readFile, writeFile } from './host/electron.js';
 import { resolveDocPath } from './host/paths.js';
-import { currentFilename } from './host/cardmirror.js';
+import { currentFilename, EDITOR_SELECTOR } from './host/cardmirror.js';
+import { isDirty, markClean, watchEdits } from './host/dirty.js';
+import {
+  anchorFor,
+  blockAtCaret,
+  editorBlocks,
+  toggleBreak,
+} from './host/anchors.js';
 import { watchSaves, type Watcher } from './host/watcher.js';
 import { zip, unzip, isDocx, type Parts } from './docx/zip.js';
 import { readMarker, writeMarker, clearMarker } from './docx/marker.js';
-import { rewriteDocx } from './docx/rewrite.js';
-import type { DocMeta } from './docx/headers.js';
+import { applyProfile } from './docx/rewrite.js';
+import type { PageBreak } from './docx/breaks.js';
 import {
-  syncTo,
-  enterLay,
-  leaveLay,
+  adopt,
   currentProfile,
+  enterLay,
+  isLay,
+  leaveLay,
   setProfile,
-  activeProfile,
   useWatcher,
+  watchFile,
 } from './lay.js';
-import { openPanel, type PanelAction } from './ui/settings-panel.js';
-import { openPageView, closePageView, isPageViewOpen } from './render/page-view.js';
-import { showDraftMarks, clearDraftMarks, draftMarksShown } from './render/draft-marks.js';
-import { printPageView } from './render/print.js';
-import { PAGE_BREAK_TEXT } from './profile/mapping.js';
+import { openPanel } from './ui/settings-panel.js';
+import { closePreview, isPreviewOpen, openPreview } from './render/preview.js';
+import { breakMarksShown, clearBreakMarks, showBreakMarks } from './render/break-marks.js';
+import { DEFAULT_PROFILE } from './profile/defaults.js';
 import type { Profile } from './profile/profile.js';
+import { store, type DocState } from './store.js';
 
 const ID = 'laymirror';
-const PROFILE_KEY = 'profile';
-const META_KEY = 'meta';
 
 let watcher: Watcher | null = null;
 
 type Located = { path: string } | { error: string };
 
-/** the open document's path, or why there isn't one — as a sentence, so a
- *  caller can say what it managed to do and what it didn't in one message. */
 function locate(api: PluginApi): Located {
   if (!hasFileApi()) return { error: 'laymirror only works in the desktop app' };
 
@@ -54,8 +58,19 @@ function locate(api: PluginApi): Located {
   };
 }
 
-/** read the open document, hand its parts to `edit`, write it back. every
- *  failure path reports rather than half-writing. */
+/** documents are keyed by name rather than by path: a path can be missing
+ *  while the document is plainly open, and losing the key would lose the
+ *  profile and the page breaks with it. */
+const docKey = (): string | null => currentFilename();
+
+function editor(): HTMLElement | null {
+  return (
+    document.querySelector<HTMLElement>('.ProseMirror') ??
+    document.querySelector<HTMLElement>(EDITOR_SELECTOR)
+  );
+}
+
+/** read the open document, hand its parts to `edit`, write it back. */
 async function withOpenDocx(
   api: PluginApi,
   edit: (parts: Parts) => void,
@@ -91,66 +106,66 @@ async function withOpenDocx(
   return located.path;
 }
 
-/** the document's own path and lay marker, in one pass. */
-async function readState(api: PluginApi): Promise<{ path: string | null; marker: string | null }> {
-  const found = resolveDocPath(api.docInfo());
-  if (found.kind !== 'ok') return { path: null, marker: null };
-
-  const file = await readFile(found.path);
-  if (!file) return { path: found.path, marker: null };
-  try {
-    return { path: found.path, marker: readMarker(unzip(file.bytes)) };
-  } catch {
-    return { path: found.path, marker: null };
-  }
+function docState(api: PluginApi): DocState {
+  const key = docKey();
+  return store(api).doc(key);
 }
 
-function readMeta(api: PluginApi): DocMeta {
-  const stored = api.storage.get(META_KEY);
-  const saved = (stored && typeof stored === 'object' ? stored : {}) as Partial<DocMeta>;
-  return {
-    // the document names itself — from the chip, not from docInfo(), which is
-    // null for exactly the documents laymirror is for
-    title: (currentFilename() ?? saved.title ?? '').replace(/\.[^.]+$/, ''),
-    authors: saved.authors ?? '',
-    teamCode: saved.teamCode ?? '',
-  };
+function profileFor(api: PluginApi): Profile {
+  const state = docState(api);
+  const bag = store(api);
+  // a document keeps its own profile; a document that has never had one
+  // adopts whichever was used last, which is nearly always the right guess
+  return bag.profile(state.profileId ?? bag.lastProfileId()) ?? DEFAULT_PROFILE;
 }
 
-/** the save pipeline: cardmirror has written its own docx over the file, so
- *  read it back and put the school's format on it. */
-async function applyLay(api: PluginApi, path: string): Promise<void> {
+/** the save pipeline: cardmirror has rebuilt the file from scratch, so put
+ *  the school's document back onto it. */
+async function onSaved(api: PluginApi, path: string): Promise<void> {
+  markClean();
   const file = await readFile(path);
   if (!file) return;
 
-  let bytes: Uint8Array;
+  const bag = store(api);
+  const key = docKey();
+  const state = bag.doc(key);
+  const profile = profileFor(api);
+
+  let outcome;
   try {
-    bytes = rewriteDocx(file.bytes, currentProfile(), readMeta(api));
+    outcome = applyProfile(file.bytes, profile, state.breaks);
   } catch {
     api.showToast('laymirror could not read that save — the file is unchanged');
     return;
   }
 
-  await writeFile(path, bytes);
+  if (outcome.kind === 'adopted') {
+    // word wrote this file, so its header is the truth — take it, and every
+    // later cardmirror save restores what the user actually typed
+    bag.setProfile({ ...profile, snapshot: outcome.snapshot });
+    return;
+  }
+  if (outcome.kind === 'skipped') return;
+
+  await writeFile(path, outcome.bytes);
   await watcher?.resync();
 }
 
-/** created once, started only by `enterLay`. */
 function ensureWatcher(api: PluginApi): void {
   if (watcher) return;
-  watcher = watchSaves((path) => void applyLay(api, path));
+  watcher = watchSaves((path) => void onSaved(api, path));
   useWatcher(watcher);
 }
 
 async function toggleLay(api: PluginApi): Promise<void> {
-  const profile = currentProfile();
-  const wasLay = activeProfile() !== null;
+  const profile = profileFor(api);
+  const wasLay = isLay();
 
   // the screen changes first, and whatever becomes of the file: a document
   // laymirror cannot reach must never be left wearing lay type after the user
   // has turned it off
   if (wasLay) leaveLay();
-  else enterLay(profile.id);
+  else await enterLay();
 
   const path = await withOpenDocx(api, (parts) => {
     if (wasLay) clearMarker(parts);
@@ -162,63 +177,149 @@ async function toggleLay(api: PluginApi): Promise<void> {
     return;
   }
 
-  // the marker stuck, so the watcher can follow the file from here
-  syncTo(wasLay ? null : profile.id, path);
+  watchFile(wasLay ? null : path);
+  const key = docKey();
+  if (!wasLay && key) store(api).setDoc(key, { profileId: profile.id });
   api.showToast(wasLay ? 'lay formatting off' : `lay formatting on — ${profile.name}`);
 }
 
-function togglePageView(api: PluginApi): void {
-  if (isPageViewOpen()) {
-    closePageView();
+async function showPageView(api: PluginApi): Promise<void> {
+  if (isPreviewOpen()) {
+    closePreview();
     return;
   }
-  if (!openPageView(currentProfile(), readMeta(api))) {
-    api.showToast('nothing to lay out yet');
+
+  // page view renders the file on disk. saving on the user's behalf would
+  // make a preview command change their document, so it says so and stops.
+  if (isDirty()) {
+    api.showToast('save first — page view shows the document as it is on disk');
+    return;
+  }
+
+  const located = locate(api);
+  if ('error' in located) {
+    api.showToast(located.error);
+    return;
+  }
+
+  const file = await readFile(located.path);
+  if (!file) {
+    api.showToast('could not read the document — reopen it and try again');
+    return;
+  }
+
+  try {
+    await openPreview(file.bytes, {
+      onOpenInWord: () => void openExternal(located.path),
+    });
+  } catch {
+    api.showToast('laymirror could not lay this document out');
   }
 }
 
-function toggleDraftMarks(api: PluginApi): void {
-  if (draftMarksShown()) {
-    clearDraftMarks();
+function toggleBreakMarks(api: PluginApi): void {
+  if (breakMarksShown()) {
+    clearBreakMarks();
     api.showToast('page break marks off');
     return;
   }
-  const breaks = showDraftMarks(currentProfile());
-  if (breaks === null) api.showToast('nothing to measure yet');
-  else api.showToast(`${breaks} page break${breaks === 1 ? '' : 's'}`);
-}
-
-/** the break goes in as text: cardmirror's model has nowhere else to keep
- *  one, and the rewrite turns it back into a real break on save. */
-function insertPageBreak(api: PluginApi): void {
-  const editor = document.querySelector<HTMLElement>('.ProseMirror');
-  editor?.focus();
-  if (editor && document.execCommand('insertText', false, PAGE_BREAK_TEXT)) {
-    api.showToast('page break added — keep it on a line of its own');
+  const host = editor();
+  if (!host) {
+    api.showToast('no document is open');
     return;
   }
-  api.showToast(`type ${PAGE_BREAK_TEXT} on a line of its own to break a page`);
+  const drawn = showBreakMarks(host, docState(api).breaks);
+  api.showToast(`${drawn} page break${drawn === 1 ? '' : 's'}`);
 }
 
-function actionsFor(api: PluginApi): PanelAction[] {
-  return [
-    { label: 'page view', run: () => togglePageView(api) },
-    { label: 'page break marks', run: () => toggleDraftMarks(api) },
-    { label: 'insert page break', run: () => insertPageBreak(api) },
-    {
-      label: 'print',
-      run: () => {
-        if (!isPageViewOpen()) togglePageView(api);
-        if (isPageViewOpen()) printPageView();
-      },
+/** a page break is anchored to the nearest heading and held outside the
+ *  document — cardmirror's model cannot carry one, and the text sentinel this
+ *  replaces was visible, searchable and corruptible. */
+function togglePageBreak(api: PluginApi): void {
+  const host = editor();
+  if (!host) {
+    api.showToast('no document is open');
+    return;
+  }
+
+  const block = blockAtCaret(host);
+  if (!block) {
+    api.showToast('put the cursor where the page should break');
+    return;
+  }
+
+  const mark = anchorFor(editorBlocks(host), block);
+  if (!mark) {
+    api.showToast('a page break needs a pocket, hat, block or tag above it');
+    return;
+  }
+
+  const key = docKey();
+  if (!key) {
+    api.showToast('no document is open');
+    return;
+  }
+
+  const bag = store(api);
+  const before = bag.doc(key).breaks;
+  const after = toggleBreak(before, mark);
+  bag.setDoc(key, { breaks: after });
+
+  if (breakMarksShown()) showBreakMarks(host, after);
+  api.showToast(
+    after.length < before.length ? 'page break removed' : 'page break added — save to apply it',
+  );
+}
+
+async function openLaymirror(api: PluginApi): Promise<void> {
+  ensureWatcher(api);
+  const host = editor();
+  if (host) watchEdits(host);
+
+  const found = resolveDocPath(api.docInfo());
+  const path = found.kind === 'ok' ? found.path : null;
+
+  // reconciliation only. a marker we cannot read leaves lay exactly as it is —
+  // reading the file must never be able to switch the screen off.
+  let marker: string | null = null;
+  if (path) {
+    const file = await readFile(path);
+    if (file) {
+      try {
+        marker = readMarker(unzip(file.bytes));
+      } catch {
+        marker = null;
+      }
+    }
+  }
+  await setProfile(profileFor(api));
+  await adopt(marker, path);
+
+  openPanel({
+    profile: () => profileFor(api),
+    onProfile: async (profile) => {
+      const key = docKey();
+      store(api).setProfile(profile);
+      if (key) store(api).setDoc(key, { profileId: profile.id });
+      await setProfile(profile);
     },
-  ];
-}
-
-/** the profile outlives a restart; the marker only records which one. */
-function restoreProfile(api: PluginApi): void {
-  const stored = api.storage.get(PROFILE_KEY);
-  if (stored && typeof stored === 'object') setProfile(stored as Profile);
+    isLay,
+    onToggleLay: () => toggleLay(api),
+    breakCount: () => docState(api).breaks.length,
+    actions: [
+      { label: 'page view', run: () => void showPageView(api) },
+      { label: 'page break marks', run: () => toggleBreakMarks(api) },
+      { label: 'insert page break', run: () => togglePageBreak(api) },
+      {
+        label: 'open in word',
+        run: () => {
+          const located = locate(api);
+          if ('error' in located) api.showToast(located.error);
+          else void openExternal(located.path);
+        },
+      },
+    ],
+  });
 }
 
 register({
@@ -227,52 +328,35 @@ register({
   apiVersion: 1,
   commands: [
     {
-      // the one worth putting on the ribbon — everything else is in here
       id: `${ID}.panel`,
       label: 'laymirror: open',
       keywords: ['lay', 'debate', 'template', 'profile', 'settings'],
-      run: async (api) => {
-        restoreProfile(api);
-        ensureWatcher(api);
-        const { path, marker } = await readState(api);
-        syncTo(marker, path);
-
-        openPanel({
-          profile: currentProfile,
-          onProfile: (profile) => {
-            setProfile(profile);
-            api.storage.set(PROFILE_KEY, profile);
-          },
-          meta: () => readMeta(api),
-          onMeta: (meta) => api.storage.set(META_KEY, meta),
-          isLay: () => activeProfile() !== null,
-          onToggleLay: () => toggleLay(api),
-          actions: actionsFor(api),
-        });
-      },
+      // a plugin cannot put itself on the ribbon, so it had better arrive
+      // with a key already bound
+      defaultKey: 'Mod-Alt-l',
+      run: (api) => openLaymirror(api),
     },
     {
       id: `${ID}.page-view`,
       label: 'laymirror: page view',
       keywords: ['page', 'print', 'layout', 'preview'],
-      run: (api) => {
-        restoreProfile(api);
-        togglePageView(api);
-      },
+      defaultKey: 'Mod-Alt-p',
+      run: (api) => showPageView(api),
     },
     {
       id: `${ID}.page-break`,
       label: 'laymirror: insert page break',
       keywords: ['page', 'break'],
-      run: (api) => insertPageBreak(api),
+      defaultKey: 'Mod-Alt-Enter',
+      run: (api) => togglePageBreak(api),
     },
     {
       id: `${ID}.toggle-lay`,
       label: 'laymirror: mark this document as lay',
       keywords: ['lay', 'debate', 'parent', 'judge'],
       run: async (api) => {
-        restoreProfile(api);
         ensureWatcher(api);
+        await setProfile(profileFor(api));
         await toggleLay(api);
       },
     },

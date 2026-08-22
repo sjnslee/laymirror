@@ -2,40 +2,62 @@
 
 lay debate plugin for [cardmirror](https://github.com/ant981228/cardmirror).
 
-toggleable mode for lay debate with format scanning, font changes, pagination,
-print utilities, and more
+toggleable lay mode: the school's own styles, header, footer and margins put
+back on every save, plus a page view of the document as word will print it.
 
-**status: all seven build phases are in** — marker, work-view typography,
-template ingest, save pipeline, paginator, page view, print, font
-substitution. not yet carried through a live round.
+**status: rebuilt around docx-preview. not yet carried through a live round.**
 
-## details
+## why it exists
 
-lay document is marked by a custom document property under the `.docx`.
-plugin is dormant without the marker.
+cardmirror's exporter rebuilds the `.docx` from scratch on every save — its
+own `styles.xml`, one hardcoded letter section with 1in margins, and no
+header, footer or theme at all (`src/export/exporter.ts:111`). so a lay
+document loses the school's format every time it is saved.
 
-laymirror reads template's fonts, sizes, weights, indents, spacing,
-page setup, header and footer from `styles.xml` and `sectPr`.
+laymirror puts it back.
 
-every save of a marked document is read back and rewritten: the template's
-styles, its header and footer, its page setup, its attached template, and a
-real page break wherever one was asked for.
+## how it works
 
-page view lays the document out on the template's page and prints it. work
-view draws word's dotted rule where each page will break.
+a lay document is marked by a custom document property inside the `.docx`.
+without the marker the plugin is inert.
+
+loading a school template snapshots its identity — `header1.xml`,
+`footer1.xml`, the section, `theme1.xml`, `fontTable.xml` and `styles.xml` —
+verbatim. every save then asks one question:
+
+- **does the file carry a header reference?** only word writes one, so the
+  file is word's and its header is authoritative. laymirror re-adopts it and
+  rewrites nothing. a team code you typed in word survives forever.
+- **does it not?** cardmirror just stripped it. laymirror restores the
+  snapshot and remaps cardmirror's exported style ids onto the ones the
+  template defines — `Heading4` → `Tag`, `Style13ptBold` → `Cite`.
+
+styles are carried, never rebuilt, so `smallCaps`, thick underlines and
+borders survive by construction rather than by being parsed.
+
+page view renders the real file with
+[docx-preview](https://github.com/VolodymyrBaydalka/docxjs), which resolves
+`basedOn` chains and theme fonts the way word does. pages break, in order of
+preference, where word said they broke (`w:lastRenderedPageBreak`), where you
+asked, or — only when neither exists — where a measuring pass over the
+rendered layout puts them. the last case says so on screen.
+
+manual page breaks are held outside the document, anchored to cardmirror's
+stable heading ids, and injected as real `<w:br w:type="page"/>` on save.
+cardmirror's model cannot carry a break: its importer turns one into a plain
+newline and its exporter writes it back as a line break.
 
 ## caveats
 
-- the paginator is ours, not word's, so a long document can drift a page.
-  `PAGE` and `NUMPAGES` stay live fields, so the printed file is right
-  regardless — the drift is confined to the preview.
-- page view's header is built from the title, authors and team code typed
-  into the panel. the printed `.docx` carries the template's own header.
-- garamond is on no mac and in no cardmirror bundle, so the plugin embeds
-  eb garamond and uses it when the real face is absent. it is the right
-  typeface but not metric-compatible, so lines can break differently.
-- a manual page break is the text `[page break]` alone on a line, because
-  cardmirror's model has nowhere else to keep one.
+- pagination is exact only for a file word has saved. otherwise it is
+  chromium laying out the right styles at the right size — close, and capable
+  of drifting a line over a long document. `PAGE` and `NUMPAGES` stay live
+  fields, so the printed file is right regardless.
+- page view shows the file on disk. it refuses over unsaved edits rather than
+  saving on your behalf.
+- `open in word` is in the panel, and is the only perfectly faithful preview.
+- a plugin cannot place a ribbon button. laymirror ships default shortcuts
+  instead.
 
 ## install
 
@@ -49,11 +71,16 @@ npm run build
 in cardmirror: settings → plugins → developer → "load plugin from
 file…" → `plugin.js`.
 
-commands triggered by keyboard shortcut (settings → keyboard
-shortcuts → plugins), or by adding to ribbon with "+ add".
+default shortcuts:
 
-suggested: add **laymirror: open** to ribbon. everything else — page view,
-break marks, insert break, print — is a button inside it.
+| | |
+| --- | --- |
+| `⌘⌥L` | open laymirror |
+| `⌘⌥P` | page view |
+| `⌘⌥↩` | insert or remove a page break |
+
+for a ribbon button: settings → ribbon → "+ add button" and pick a laymirror
+command. cardmirror allows up to 10 custom buttons.
 
 ## development
 

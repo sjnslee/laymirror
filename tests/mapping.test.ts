@@ -1,12 +1,19 @@
-import { describe, it, expect } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import {
+  HEADING_LEVEL_TO_TYPE,
   LEGACY_BY_NAME,
   NATIVE_MARK_BY_ID,
-  HEADING_LEVEL_TO_TYPE,
   takesNativePath,
   validateMapping,
 } from '../src/profile/mapping.js';
-import { DEFAULT_LAY } from '../src/profile/defaults.js';
+import { DEFAULT_PROFILE } from '../src/profile/defaults.js';
+import type { Profile } from '../src/profile/profile.js';
+
+const profile = (over: Partial<Profile> = {}): Profile => ({
+  ...DEFAULT_PROFILE,
+  id: 'template:lay.docx',
+  ...over,
+});
 
 describe('round-trip vocabulary', () => {
   it('recognises the lay donor paragraph names', () => {
@@ -16,19 +23,10 @@ describe('round-trip vocabulary', () => {
     expect(LEGACY_BY_NAME['underline']).toBe('char-underline');
   });
 
-  it('maps the donor style names the profile actually uses', () => {
-    const t = DEFAULT_LAY.types;
-    expect(LEGACY_BY_NAME[t.tag.styleName.toLowerCase()]).toBe('tag');
-    expect(LEGACY_BY_NAME[t.cite_paragraph.styleName.toLowerCase()]).toBe('cite');
-    expect(LEGACY_BY_NAME[t.card_body.styleName.toLowerCase()]).toBe('body');
-    expect(LEGACY_BY_NAME[t.underline_mark.styleName.toLowerCase()]).toBe('char-underline');
-  });
-
   it('resolves headings by outline level, not by name', () => {
-    const t = DEFAULT_LAY.types;
-    expect(HEADING_LEVEL_TO_TYPE[(t.pocket.outlineLevel ?? 0) + 1]).toBe('pocket');
-    expect(HEADING_LEVEL_TO_TYPE[(t.hat.outlineLevel ?? 0) + 1]).toBe('hat');
-    expect(HEADING_LEVEL_TO_TYPE[(t.block.outlineLevel ?? 0) + 1]).toBe('block');
+    expect(HEADING_LEVEL_TO_TYPE[1]).toBe('pocket');
+    expect(HEADING_LEVEL_TO_TYPE[2]).toBe('hat');
+    expect(HEADING_LEVEL_TO_TYPE[4]).toBe('tag');
   });
 
   it('keeps cite and underline marks only on the native path', () => {
@@ -38,14 +36,12 @@ describe('round-trip vocabulary', () => {
 });
 
 describe('native-path detection', () => {
-  it('rejects the donor as shipped — it lacks StyleUnderline and Emphasis', () => {
-    expect(takesNativePath(['Style13ptBold', 'Underline', 'Tag', 'Cite', 'card'], [])).toBe(false);
+  it('rejects a donor that lacks the sentinel styles', () => {
+    expect(takesNativePath(['Style13ptBold', 'Underline', 'Tag', 'Cite'], [])).toBe(false);
   });
 
-  it('accepts once the three sentinel styles are present', () => {
-    expect(
-      takesNativePath(['Style13ptBold', 'StyleUnderline', 'Emphasis', 'Tag'], []),
-    ).toBe(true);
+  it('accepts once all three are present', () => {
+    expect(takesNativePath(['Style13ptBold', 'StyleUnderline', 'Emphasis'], [])).toBe(true);
   });
 
   it('matches by name as well as by id', () => {
@@ -54,26 +50,61 @@ describe('native-path detection', () => {
 });
 
 describe('validateMapping', () => {
-  it('passes every block type in the default profile', () => {
-    const blockWarnings = validateMapping(DEFAULT_LAY).filter(
-      (w) => w.type !== 'cite_mark' && w.type !== 'underline_mark',
+  it('says nothing about a profile with no template', () => {
+    expect(validateMapping(DEFAULT_PROFILE)).toEqual([]);
+  });
+
+  it('accepts styles cardmirror knows by name', () => {
+    expect(
+      validateMapping(
+        profile({
+          styleMap: { Heading4: 'Tag', StyleUnderline: 'Underline' },
+          styles: [
+            { id: 'Tag', name: 'Tag', kind: 'paragraph' },
+            { id: 'Underline', name: 'Underline', kind: 'character' },
+          ],
+        }),
+      ),
+    ).toEqual([]);
+  });
+
+  it('accepts headings, which resolve by outline level', () => {
+    expect(
+      validateMapping(profile({ styleMap: { Heading1: 'Heading1', Heading2: 'Heading2' } })),
+    ).toEqual([]);
+  });
+
+  // this is the failure worth catching before someone cuts a whole file: it
+  // exports into word perfectly and comes back as plain paragraphs
+  it('flags a style name outside cardmirror vocabulary', () => {
+    const warnings = validateMapping(
+      profile({
+        styleMap: { Heading4: 'Zonk' },
+        styles: [{ id: 'Zonk', name: 'Zonk', kind: 'paragraph' }],
+      }),
     );
-    expect(blockWarnings).toEqual([]);
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0]!.styleId).toBe('Zonk');
+    expect(warnings[0]!.message).toContain('ordinary paragraph');
   });
 
-  it('does not warn about marks — the sentinel styles are always written', () => {
-    // buildStylesXml emits Style13ptBold, StyleUnderline and Emphasis whatever
-    // a template calls its own, so the native path is not in doubt and saying
-    // otherwise in the ui was just noise
-    expect(validateMapping(DEFAULT_LAY).some((w) => w.type === 'cite_mark')).toBe(false);
-    expect(validateMapping(DEFAULT_LAY)).toEqual([]);
+  it('checks the bare styles too', () => {
+    const warnings = validateMapping(
+      profile({
+        bareStyles: { cite_paragraph: 'Nope', card_body: null },
+        styles: [{ id: 'Nope', name: 'Nope', kind: 'paragraph' }],
+      }),
+    );
+    expect(warnings.map((w) => w.styleId)).toEqual(['Nope']);
   });
 
-  it('flags a style name outside the vocabulary', () => {
-    const bad = {
-      ...DEFAULT_LAY,
-      types: { ...DEFAULT_LAY.types, tag: { ...DEFAULT_LAY.types.tag, styleName: 'Zonk' } },
-    };
-    expect(validateMapping(bad).some((w) => w.type === 'tag')).toBe(true);
+  it('reports each style once, however many types point at it', () => {
+    const warnings = validateMapping(
+      profile({
+        styleMap: { Heading4: 'Zonk', Analytic: 'Zonk' },
+        styles: [{ id: 'Zonk', name: 'Zonk', kind: 'paragraph' }],
+      }),
+    );
+    expect(warnings).toHaveLength(1);
   });
 });

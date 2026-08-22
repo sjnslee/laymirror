@@ -1,110 +1,120 @@
-// @vitest-environment jsdom
-import { describe, it, expect } from 'vitest';
-import { readTemplate, readAttachedTemplate } from '../src/profile/read-template.js';
-import { DEFAULT_LAY } from '../src/profile/defaults.js';
-import { unzip } from '../src/docx/zip.js';
-
+import { describe, expect, it } from 'vitest';
 import { makeTemplate } from './fixture.js';
+import {
+  deriveBareStyles,
+  deriveStyleMap,
+  readStyles,
+  readTemplate,
+} from '../src/profile/read-template.js';
+import type { StyleInfo } from '../src/profile/profile.js';
 
-const bytes = makeTemplate();
-const { profile, missing } = readTemplate(bytes, DEFAULT_LAY);
+const ok = () => {
+  const result = readTemplate(makeTemplate(), 'lay.docx');
+  if (!result.ok) throw new Error(result.error);
+  return result.profile;
+};
 
-describe('readTemplate', () => {
-  it('reads Normal as palatino 10pt', () => {
-    expect(profile.types.paragraph.font).toBe('Palatino Linotype');
-    expect(profile.types.paragraph.sizePt).toBe(10);
+describe('readStyles', () => {
+  it('reads id, name and kind', () => {
+    const styles = readStyles(
+      '<w:styles>' +
+        '<w:style w:type="paragraph" w:styleId="Tag"><w:name w:val="Tag"/></w:style>' +
+        '<w:style w:type="character" w:styleId="Underline"><w:name w:val="Underline"/></w:style>' +
+        '</w:styles>',
+    );
+    expect(styles).toEqual([
+      { id: 'Tag', name: 'Tag', kind: 'paragraph' },
+      { id: 'Underline', name: 'Underline', kind: 'character' },
+    ]);
   });
 
-  it('reads the pocket as a page-breaking centred small-caps heading', () => {
-    const pocket = profile.types.pocket;
-    expect(pocket.styleId).toBe('Heading1');
-    expect(pocket.font).toBe('Times New Roman');
-    expect(pocket.sizePt).toBe(20);
-    expect(pocket.bold).toBe(true);
-    expect(pocket.smallCaps).toBe(true);
-    expect(pocket.align).toBe('center');
-    expect(pocket.pageBreakBefore).toBe(true);
-    expect(pocket.outlineLevel).toBe(0);
-  });
-
-  it('does not give hat or block a page break — only the pocket has one', () => {
-    expect(profile.types.hat.pageBreakBefore).toBeUndefined();
-    expect(profile.types.block.pageBreakBefore).toBeUndefined();
-    expect(profile.types.hat.outlineLevel).toBe(1);
-    expect(profile.types.block.outlineLevel).toBe(2);
-  });
-
-  it('drops word stock accent colour, keeps one the donor names outright', () => {
-    // heading 2 carries themeColor accent1 — chrome every template inherits.
-    // heading 3 names 7A0019 with no theme reference, so someone chose it.
-    expect(profile.types.hat.color).toBeUndefined();
-    expect(profile.types.block.color).toBe('7A0019');
-  });
-
-  it('inherits palatino into Tag through basedOn Normal', () => {
-    const tag = profile.types.tag;
-    expect(tag.styleName).toBe('Tag');
-    expect(tag.bold).toBe(true);
-    expect(tag.font).toBe('Palatino Linotype');
-    expect(tag.sizePt).toBe(10);
-  });
-
-  it('inherits Cite from Tag and adds the thick rule', () => {
-    const cite = profile.types.cite_paragraph;
-    expect(cite.styleName).toBe('Cite');
-    expect(cite.underline).toBe('thick');
-    expect(cite.bold).toBe(true); // from Tag
-    expect(cite.font).toBe('Palatino Linotype'); // from Normal
-  });
-
-  it('resolves the card body to the theme minor font, not palatino', () => {
-    const card = profile.types.card_body;
-    expect(card.styleName).toBe('card');
-    expect(card.font).toBe('Cambria');
-    expect(card.indentLeftDxa).toBe(288);
-    expect(card.indentRightDxa).toBe(288);
-    expect(card.underline).toBe('single');
-    expect(card.spaceAfterPt).toBe(8);
-    expect(card.lineSpacing).toEqual({ rule: 'auto', value: 259 });
-  });
-
-  it('turns bold off for the underline mark, as the donor does', () => {
-    expect(profile.types.underline_mark.bold).toBe(false);
-    expect(profile.types.underline_mark.underline).toBe('single');
-  });
-
-  it('reads the donor page setup — letter, half-inch margins', () => {
-    expect(profile.page.widthTwips).toBe(12240);
-    expect(profile.page.heightTwips).toBe(15840);
-    expect(profile.page.margin.top).toBe(720);
-    expect(profile.page.margin.bottom).toBe(1008);
-  });
-
-  it('lifts the header and footer', () => {
-    expect(profile.headerXml).toContain('<w:hdr');
-    expect(profile.footerXml).toContain('<w:ftr');
-  });
-
-  it('reduces attachedTemplate to a basename and decodes it', () => {
-    expect(profile.attachedTemplate).toBe('Lay Cut Cards.dotx');
-  });
-
-  it('reports the types the donor has no style for', () => {
-    expect(missing).toContain('analytic');
-    expect(missing).toContain('undertag');
-    expect(missing).not.toContain('tag');
-    expect(missing).not.toContain('card_body');
-  });
-
-  it('keeps the fallback spec for anything missing', () => {
-    expect(profile.types.analytic).toEqual(DEFAULT_LAY.types.analytic);
+  it('falls back to the id when a style has no name', () => {
+    expect(readStyles('<w:styles><w:style w:styleId="Bare"></w:style></w:styles>')[0]!.name).toBe(
+      'Bare',
+    );
   });
 });
 
-describe('readAttachedTemplate', () => {
-  it('strips a full path down to the basename', () => {
-    const parts = unzip(bytes);
-    expect(readAttachedTemplate(parts)).toBe('Lay Cut Cards.dotx');
-    expect(readAttachedTemplate(parts)).not.toContain('/');
+describe('deriveStyleMap', () => {
+  const styles: StyleInfo[] = [
+    { id: 'Normal', name: 'Normal', kind: 'paragraph' },
+    { id: 'Heading1', name: 'heading 1', kind: 'paragraph' },
+    { id: 'Heading2', name: 'heading 2', kind: 'paragraph' },
+    { id: 'Tag', name: 'Tag', kind: 'paragraph' },
+    { id: 'Cite', name: 'Cite', kind: 'paragraph' },
+    { id: 'Underline', name: 'Underline', kind: 'character' },
+    { id: 'OldCite', name: 'Author-Date', kind: 'character' },
+  ];
+
+  // cardmirror exports a tag as Heading4; a lay template's tag style is `Tag`,
+  // and identity would render every tag in word's stock italic blue
+  it("sends a tag to the template's own Tag style", () => {
+    expect(deriveStyleMap(styles)['Heading4']).toBe('Tag');
+  });
+
+  // the cite MARK is a run style, so it must never land on the paragraph
+  // style called Cite — word cannot resolve a paragraph style as an rStyle
+  it('sends the cite mark to a character style, never the Cite paragraph', () => {
+    expect(deriveStyleMap(styles)['Style13ptBold']).toBe('OldCite');
+  });
+
+  it("sends the underline mark to the template's underline style", () => {
+    expect(deriveStyleMap(styles)['StyleUnderline']).toBe('Underline');
+  });
+
+  it('leaves headings alone where the template defines them', () => {
+    const map = deriveStyleMap(styles);
+    expect(map['Heading1']).toBe('Heading1');
+    expect(map['Heading2']).toBe('Heading2');
+  });
+
+  // mapping onto a style the template does not define would render the text
+  // unstyled, which is worse than leaving cardmirror's own id in place
+  it('never maps onto a style the template does not define', () => {
+    const map = deriveStyleMap([{ id: 'Normal', name: 'Normal', kind: 'paragraph' }]);
+    expect(Object.values(map)).toEqual([]);
+  });
+});
+
+describe('deriveBareStyles', () => {
+  it('finds the styles for the two types cardmirror exports bare', () => {
+    expect(
+      deriveBareStyles([
+        { id: 'Cite', name: 'Cite', kind: 'paragraph' },
+        { id: 'card', name: 'card', kind: 'paragraph' },
+      ]),
+    ).toEqual({ cite_paragraph: 'Cite', card_body: 'card' });
+  });
+
+  it('is null where the template says nothing', () => {
+    expect(deriveBareStyles([])).toEqual({ cite_paragraph: null, card_body: null });
+  });
+});
+
+describe('readTemplate', () => {
+  it("keeps the template's styles and theme verbatim", () => {
+    const profile = ok();
+    expect(profile.snapshot!.parts['word/styles.xml']).toContain('Palatino Linotype');
+    expect(profile.snapshot!.parts['word/theme/theme1.xml']).toContain('Calibri');
+  });
+
+  it('keeps the header and the real margins', () => {
+    const profile = ok();
+    expect(profile.snapshot!.parts['word/header1.xml']).toContain('PAGE');
+    expect(profile.snapshot!.sectPr).toContain('w:bottom="1008"');
+  });
+
+  it('ids the profile by template, so two schools cannot collide', () => {
+    expect(ok().id).toBe('template:lay.docx');
+  });
+
+  it('reduces the attached template to a basename', () => {
+    expect(ok().snapshot!.attachedTemplate).toBe('Lay%20Cut%20Cards.dotx');
+  });
+
+  it('reports a file it cannot read instead of throwing', () => {
+    const result = readTemplate(new Uint8Array([1, 2, 3]), 'notes.txt');
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error).toContain('notes.txt');
   });
 });

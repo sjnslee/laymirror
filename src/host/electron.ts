@@ -19,6 +19,7 @@ export interface ReadFile {
 
 interface ElectronApi {
   statFile(path: string): Promise<FileStat | null>;
+  openExternal?(target: string): Promise<unknown>;
   readFileAtPath(path: string): Promise<ReadFile | null>;
   writeFileAtPath(
     path: string,
@@ -60,4 +61,10 @@ export async function writeFile(
   const a = api();
   if (!a) throw new Error('electronAPI unavailable — desktop only');
   return a.writeFileAtPath(path, bytes, opts);
+}
+
+/** hand the file to word. the only perfectly faithful preview there will ever
+ *  be — no emulation, because it is word doing the laying out. */
+export async function openExternal(path: string): Promise<void> {
+  await api()?.openExternal?.(path.startsWith('file:') ? path : `file://${path}`);
 }

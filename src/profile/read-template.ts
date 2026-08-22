@@ -1,329 +1,146 @@
-// a school's template docx IS the profile. it already carries font, size,
-// weight, casing, underline, colour, alignment, indent, spacing and
-// page-break-before per style, plus page setup and the header and footer.
-// so nothing here invents a format — it reads one.
+// turning a school's .docx or .dotx into a profile.
+//
+// this used to parse the donor's typography into a model and re-emit it,
+// which dropped every property nobody thought to parse. now it only does two
+// things: take the identity snapshot verbatim, and work out which of the
+// template's style ids each cardmirror export style should become.
 
-import { unzip, readText, type Parts } from '../docx/zip.js';
-import { HEADING_LEVEL_TO_TYPE } from './mapping.js';
-import { FONT_FALLBACKS } from './defaults.js';
-import type { BlockType, PageSetup, Profile, RunType, TypeSpec } from './profile.js';
+import { captureSnapshot } from '../docx/snapshot.js';
+import { isDocx, readText, unzip } from '../docx/zip.js';
+import { EXPORT_STYLE_BY_TYPE, LEGACY_BY_ID, LEGACY_BY_NAME } from './mapping.js';
+import type { Profile, StyleInfo } from './profile.js';
 
 const STYLES = 'word/styles.xml';
-const THEME = 'word/theme/theme1.xml';
-const DOCUMENT = 'word/document.xml';
-const SETTINGS_RELS = 'word/_rels/settings.xml.rels';
 
-function parseXml(xml: string): Document {
-  return new DOMParser().parseFromString(xml, 'application/xml');
-}
+export type ReadResult =
+  | { ok: true; profile: Profile }
+  | { ok: false; error: string };
 
-const first = (el: Element | Document, tag: string): Element | null =>
-  el.getElementsByTagName(tag).item(0);
+const attr = (tag: string, name: string): string | null =>
+  new RegExp(`\\b${name}="([^"]*)"`).exec(tag)?.[1] ?? null;
 
-const attr = (el: Element | null, name: string): string | null =>
-  el?.getAttribute(name) ?? null;
-
-/** ooxml booleans: present means true unless w:val says otherwise. */
-function onOff(parent: Element | null, tag: string): boolean | undefined {
-  if (!parent) return undefined;
-  const el = first(parent, tag);
-  if (!el) return undefined;
-  const val = el.getAttribute('w:val');
-  return val === null ? true : val !== '0' && val !== 'false';
-}
-
-const num = (value: string | null): number | undefined => {
-  if (value === null) return undefined;
-  const n = Number(value);
-  return Number.isFinite(n) ? n : undefined;
-};
-
-interface RawStyle {
-  id: string;
-  name: string;
-  basedOn: string | null;
-  type: string;
-  spec: Partial<TypeSpec>;
-}
-
-function themeFonts(parts: Parts): { major: string | null; minor: string | null } {
-  const xml = readText(parts, THEME);
-  if (!xml) return { major: null, minor: null };
-  const doc = parseXml(xml);
-  const read = (tag: string): string | null =>
-    attr(first(first(doc, tag) ?? doc, 'a:latin'), 'typeface');
-  return { major: read('a:majorFont'), minor: read('a:minorFont') };
-}
-
-function readFont(rPr: Element | null, theme: { major: string | null; minor: string | null }) {
-  const fonts = rPr ? first(rPr, 'w:rFonts') : null;
-  if (!fonts) return undefined;
-  const explicit = attr(fonts, 'w:ascii');
-  if (explicit) return explicit;
-  // asciiTheme="minorHAnsi" | "majorHAnsi" resolves through the theme
-  const themed = attr(fonts, 'w:asciiTheme');
-  if (!themed) return undefined;
-  return (themed.startsWith('major') ? theme.major : theme.minor) ?? undefined;
-}
-
-function readStyleSpec(
-  style: Element,
-  theme: { major: string | null; minor: string | null },
-): Partial<TypeSpec> {
-  const pPr = first(style, 'w:pPr');
-  const rPr = first(style, 'w:rPr');
-  const spec: Partial<TypeSpec> = {};
-
-  const font = readFont(rPr, theme);
-  if (font) spec.font = font;
-
-  // w:sz is half-points
-  const sz = num(attr(rPr ? first(rPr, 'w:sz') : null, 'w:val'));
-  if (sz !== undefined) spec.sizePt = sz / 2;
-
-  const bold = onOff(rPr, 'w:b');
-  if (bold !== undefined) spec.bold = bold;
-  const italic = onOff(rPr, 'w:i');
-  if (italic !== undefined) spec.italic = italic;
-  const smallCaps = onOff(rPr, 'w:smallCaps');
-  if (smallCaps !== undefined) spec.smallCaps = smallCaps;
-
-  const u = attr(rPr ? first(rPr, 'w:u') : null, 'w:val');
-  if (u) spec.underline = u as TypeSpec['underline'];
-
-  // a themed colour is word's stock chrome, not a lay choice — its default
-  // heading 2 and 3 are accent1 blue in every template that ever passed
-  // through word, used or not. lay prints black, so a colour is adopted only
-  // when the donor names one outright.
-  const colorEl = rPr ? first(rPr, 'w:color') : null;
-  const color = attr(colorEl, 'w:val');
-  if (color && color !== 'auto' && !colorEl!.hasAttribute('w:themeColor')) spec.color = color;
-
-  const jc = attr(pPr ? first(pPr, 'w:jc') : null, 'w:val');
-  if (jc) spec.align = jc as TypeSpec['align'];
-
-  const ind = pPr ? first(pPr, 'w:ind') : null;
-  const left = num(attr(ind, 'w:left'));
-  if (left !== undefined) spec.indentLeftDxa = left;
-  const right = num(attr(ind, 'w:right'));
-  if (right !== undefined) spec.indentRightDxa = right;
-
-  const spacing = pPr ? first(pPr, 'w:spacing') : null;
-  // w:before / w:after are twips; 20 to the point
-  const before = num(attr(spacing, 'w:before'));
-  if (before !== undefined) spec.spaceBeforePt = before / 20;
-  const after = num(attr(spacing, 'w:after'));
-  if (after !== undefined) spec.spaceAfterPt = after / 20;
-  const line = num(attr(spacing, 'w:line'));
-  if (line !== undefined) {
-    const rule = (attr(spacing, 'w:lineRule') ?? 'auto') as 'auto' | 'exact' | 'atLeast';
-    spec.lineSpacing = { rule, value: line };
-  }
-
-  const pageBreakBefore = onOff(pPr, 'w:pageBreakBefore');
-  if (pageBreakBefore !== undefined) spec.pageBreakBefore = pageBreakBefore;
-  const keepNext = onOff(pPr, 'w:keepNext');
-  if (keepNext !== undefined) spec.keepNext = keepNext;
-  const keepLines = onOff(pPr, 'w:keepLines');
-  if (keepLines !== undefined) spec.keepLines = keepLines;
-
-  const outline = num(attr(pPr ? first(pPr, 'w:outlineLvl') : null, 'w:val'));
-  if (outline !== undefined) spec.outlineLevel = outline;
-
-  return spec;
-}
-
-function readStyles(parts: Parts): Map<string, RawStyle> {
-  const xml = readText(parts, STYLES);
-  const out = new Map<string, RawStyle>();
-  if (!xml) return out;
-
-  const doc = parseXml(xml);
-  const theme = themeFonts(parts);
-
-  // docDefaults become the implicit base of every style
-  const defaults = first(doc, 'w:rPrDefault');
-  if (defaults) {
-    out.set('__defaults__', {
-      id: '__defaults__',
-      name: '__defaults__',
-      basedOn: null,
-      type: 'paragraph',
-      spec: readStyleSpec(defaults, theme),
-    });
-  }
-
-  const styles = doc.getElementsByTagName('w:style');
-  for (let i = 0; i < styles.length; i++) {
-    const style = styles.item(i)!;
-    const id = style.getAttribute('w:styleId');
+export function readStyles(stylesXml: string): StyleInfo[] {
+  const out: StyleInfo[] = [];
+  for (const match of stylesXml.matchAll(/<w:style\b[^>]*>[\s\S]*?<\/w:style>/g)) {
+    const block = match[0];
+    const open = /<w:style\b[^>]*>/.exec(block)![0];
+    const id = attr(open, 'w:styleId');
     if (!id) continue;
-    out.set(id, {
-      id,
-      name: attr(first(style, 'w:name'), 'w:val') ?? id,
-      basedOn: attr(first(style, 'w:basedOn'), 'w:val'),
-      type: style.getAttribute('w:type') ?? 'paragraph',
-      spec: readStyleSpec(style, theme),
-    });
+    const kind = (attr(open, 'w:type') ?? 'paragraph') as StyleInfo['kind'];
+    const name = /<w:name\b[^>]*w:val="([^"]*)"/.exec(block)?.[1] ?? id;
+    out.push({ id, name, kind });
   }
   return out;
 }
 
-/** follow basedOn to the root, then merge back down so the nearest style
- *  wins. word resolves inheritance this way and css needs the result. */
-function resolve(id: string, styles: Map<string, RawStyle>): TypeSpec | null {
-  const chain: RawStyle[] = [];
-  const seen = new Set<string>();
-  let cursor: string | null = id;
-  while (cursor && !seen.has(cursor)) {
-    seen.add(cursor);
-    const style: RawStyle | undefined = styles.get(cursor);
-    if (!style) break;
-    chain.unshift(style);
-    cursor = style.basedOn;
-  }
-  if (chain.length === 0) return null;
-
-  const defaults = styles.get('__defaults__');
-  const merged: Partial<TypeSpec> = { ...(defaults?.spec ?? {}) };
-  for (const style of chain) Object.assign(merged, style.spec);
-
-  const own = styles.get(id)!;
-  return { ...merged, styleId: own.id, styleName: own.name };
+/** cardmirror's own legacy tables say which of a school's styles means what:
+ *  it matches paragraph styles by lowercased `w:name` and character styles by
+ *  a small id table. reading the same tables here means the mapping we pick
+ *  is the one cardmirror will agree with when the file comes back. */
+function roleOf(style: StyleInfo): string | null {
+  return LEGACY_BY_NAME[style.name.toLowerCase()] ?? LEGACY_BY_ID[style.id] ?? null;
 }
 
-/** find the donor's style for a cardmirror type: preferred ids first, then
- *  names, both case-insensitively. */
-function pick(
-  styles: Map<string, RawStyle>,
-  ids: readonly string[],
-  names: readonly string[] = [],
-): string | null {
-  for (const id of ids) if (styles.has(id)) return id;
-  const wanted = new Set(names.map((n) => n.toLowerCase()));
-  for (const style of styles.values()) {
-    if (wanted.has(style.name.toLowerCase())) return style.id;
-  }
-  return null;
-}
-
-/** headings are identified by outline level, matching how the importer reads
- *  them back. */
-function pickHeading(styles: Map<string, RawStyle>, level: number): string | null {
-  for (const style of styles.values()) {
-    if (style.type !== 'paragraph') continue;
-    if (style.spec.outlineLevel === level) return style.id;
-  }
-  return pick(styles, [`Heading${level + 1}`], [`heading ${level + 1}`]);
-}
-
-function readPage(parts: Parts): PageSetup {
-  const fallback: PageSetup = {
-    widthTwips: 12240,
-    heightTwips: 15840,
-    margin: { top: 1440, right: 1440, bottom: 1440, left: 1440, header: 720, footer: 720 },
-  };
-  const xml = readText(parts, DOCUMENT);
-  if (!xml) return fallback;
-  const sect = first(parseXml(xml), 'w:sectPr');
-  if (!sect) return fallback;
-
-  const size = first(sect, 'w:pgSz');
-  const mar = first(sect, 'w:pgMar');
-  return {
-    widthTwips: num(attr(size, 'w:w')) ?? fallback.widthTwips,
-    heightTwips: num(attr(size, 'w:h')) ?? fallback.heightTwips,
-    margin: {
-      top: num(attr(mar, 'w:top')) ?? fallback.margin.top,
-      right: num(attr(mar, 'w:right')) ?? fallback.margin.right,
-      bottom: num(attr(mar, 'w:bottom')) ?? fallback.margin.bottom,
-      left: num(attr(mar, 'w:left')) ?? fallback.margin.left,
-      header: num(attr(mar, 'w:header')) ?? fallback.margin.header,
-      footer: num(attr(mar, 'w:footer')) ?? fallback.margin.footer,
-    },
-  };
-}
-
-/** donors carry an absolute path through the author's home directory. word
- *  only basename-matches, so the basename is both the safe answer and the
- *  correct one. */
-export function readAttachedTemplate(parts: Parts): string | null {
-  const xml = readText(parts, SETTINGS_RELS);
-  if (!xml) return null;
-  const rels = parseXml(xml).getElementsByTagName('Relationship');
-  for (let i = 0; i < rels.length; i++) {
-    const rel = rels.item(i)!;
-    if (!rel.getAttribute('Type')?.endsWith('/attachedTemplate')) continue;
-    const target = rel.getAttribute('Target');
-    if (!target) continue;
-    const base = target.split(/[\\/]/).pop() ?? target;
-    try {
-      return decodeURIComponent(base);
-    } catch {
-      return base;
-    }
-  }
-  return null;
-}
-
-const WANTED: Record<BlockType | RunType, { ids: readonly string[]; names: readonly string[] }> = {
-  paragraph: { ids: ['Normal'], names: ['normal'] },
-  pocket: { ids: [], names: [] },
-  hat: { ids: [], names: [] },
-  block: { ids: [], names: [] },
-  tag: { ids: ['Tag', 'Tags'], names: ['tag', 'tags', 'debate tag'] },
-  cite_paragraph: { ids: ['Cite', 'Cites'], names: ['cite', 'cites', 'debate cite main'] },
-  card_body: { ids: ['card', 'Cards'], names: ['card', 'cards', 'card text'] },
-  analytic: { ids: ['Analytic'], names: ['analytic'] },
-  undertag: { ids: ['Undertag'], names: ['undertag'] },
-  underline_mark: { ids: ['Underline', 'StyleUnderline'], names: ['underline', 'style underline'] },
-  cite_mark: { ids: ['Style13ptBold', 'StyleStyleBold12pt'], names: ['style 13 pt bold'] },
-  emphasis_mark: { ids: ['Emphasis'], names: ['emphasis'] },
-  analytic_mark: { ids: ['AnalyticChar'], names: [] },
-  undertag_mark: { ids: ['UndertagChar'], names: [] },
+/** the role each cardmirror export style is looking for a home for, and the
+ *  kind of style it must land on. a run style mapped onto a paragraph style
+ *  would be written as an `rStyle` word cannot resolve, so the kinds are
+ *  checked rather than assumed. */
+const WANTED: Record<string, { role: string; kind: StyleInfo['kind'] }> = {
+  Heading4: { role: 'tag', kind: 'paragraph' },
+  Style13ptBold: { role: 'char-cite', kind: 'character' },
+  StyleUnderline: { role: 'char-underline', kind: 'character' },
 };
 
-export interface TemplateResult {
-  profile: Profile;
-  /** types the donor had no style for; they keep the fallback profile's. */
-  missing: (BlockType | RunType)[];
+/** every style playing each role, in definition order.
+ *
+ *  all of them, not just the first: cardmirror's own `Heading4` is named
+ *  "heading 4", which its legacy table also reads as a tag — so a template's
+ *  `Tag` would lose to the very style we are trying to move away from. */
+function rolesIn(styles: StyleInfo[], kind?: StyleInfo['kind']): Map<string, string[]> {
+  const byRole = new Map<string, string[]>();
+  for (const style of styles) {
+    if (kind && style.kind !== kind) continue;
+    const role = roleOf(style);
+    if (!role) continue;
+    byRole.set(role, [...(byRole.get(role) ?? []), style.id]);
+  }
+  return byRole;
 }
 
-export function readTemplate(bytes: Uint8Array, fallback: Profile): TemplateResult {
-  const parts = unzip(bytes);
-  const styles = readStyles(parts);
-  const missing: (BlockType | RunType)[] = [];
-
-  const types = { ...fallback.types };
-  for (const key of Object.keys(WANTED) as (BlockType | RunType)[]) {
-    const heading = key === 'pocket' ? 0 : key === 'hat' ? 1 : key === 'block' ? 2 : null;
-    const id =
-      heading !== null
-        ? pickHeading(styles, heading)
-        : pick(styles, WANTED[key].ids, WANTED[key].names);
-
-    const resolved = id ? resolve(id, styles) : null;
-    if (!resolved) {
-      missing.push(key);
-      continue;
-    }
-    types[key] = resolved;
-  }
-
+/** the two paragraph types cardmirror exports with no style at all. */
+export function deriveBareStyles(styles: StyleInfo[]): {
+  cite_paragraph: string | null;
+  card_body: string | null;
+} {
+  const byRole = rolesIn(styles, 'paragraph');
   return {
-    profile: {
-      ...fallback,
-      types,
-      page: readPage(parts),
-      headerXml: readText(parts, 'word/header1.xml'),
-      footerXml: readText(parts, 'word/footer1.xml'),
-      attachedTemplate: readAttachedTemplate(parts) ?? fallback.attachedTemplate,
-      donorStylesXml: readText(parts, STYLES) ?? '',
-      fontFallbacks: { ...FONT_FALLBACKS, ...fallback.fontFallbacks },
-    },
-    missing,
+    cite_paragraph: byRole.get('cite')?.[0] ?? null,
+    card_body: byRole.get('body')?.[0] ?? null,
   };
 }
 
-/** the headings the importer will reconstruct, for the settings ui. */
-export const HEADING_TYPES = HEADING_LEVEL_TO_TYPE;
+/** map cardmirror's export ids onto the template's own.
+ *
+ *  identity is the default and is usually right for Heading1–3. it is wrong
+ *  for a tag: cardmirror exports one as `Heading4`, but a lay template's tag
+ *  style is its own `Tag`, and leaving identity would render every tag in
+ *  word's stock italic blue. so where the template defines a style whose role
+ *  matches, that wins. */
+export function deriveStyleMap(styles: StyleInfo[]): Record<string, string> {
+  const defined = new Set(styles.map((s) => s.id));
+  const byKind = {
+    paragraph: rolesIn(styles, 'paragraph'),
+    character: rolesIn(styles, 'character'),
+  };
+
+  const map: Record<string, string> = {};
+  for (const exportId of Object.values(EXPORT_STYLE_BY_TYPE)) {
+    if (!exportId) continue;
+    const wanted = WANTED[exportId];
+    // the school's own style, never cardmirror's — a candidate equal to the
+    // id we are remapping is the thing we are trying to get away from
+    const preferred = wanted
+      ? (byKind[wanted.kind as 'paragraph' | 'character'] ?? byKind.paragraph)
+          .get(wanted.role)
+          ?.find((id) => id !== exportId)
+      : undefined;
+    // never map onto a style the template does not define — word would show
+    // the text unstyled, which is worse than cardmirror's own default
+    if (preferred && preferred !== exportId) map[exportId] = preferred;
+    else if (defined.has(exportId)) map[exportId] = exportId;
+  }
+  return map;
+}
+
+export function readTemplate(bytes: Uint8Array, name: string): ReadResult {
+  let parts;
+  try {
+    parts = unzip(bytes);
+  } catch {
+    return { ok: false, error: `could not read ${name} — is it a word document or template?` };
+  }
+  if (!isDocx(parts)) {
+    return { ok: false, error: `${name} is not a word document or template` };
+  }
+
+  const snapshot = captureSnapshot(parts);
+  const stylesXml = readText(parts, STYLES);
+  const styles = stylesXml ? readStyles(stylesXml) : [];
+
+  if (!snapshot && styles.length === 0) {
+    return { ok: false, error: `${name} has no styles or header to copy` };
+  }
+
+  return {
+    ok: true,
+    profile: {
+      // one profile per template, so two schools' profiles cannot collide
+      id: `template:${name}`,
+      name,
+      snapshot,
+      styleMap: deriveStyleMap(styles),
+      bareStyles: deriveBareStyles(styles),
+      styles,
+    },
+  };
+}

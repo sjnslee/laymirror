@@ -16,7 +16,27 @@
 //
 // verified against the shipped 1.3.0 parse worker.
 
-import type { BlockType, Profile, RunType } from './profile.js';
+import type { Profile } from './profile.js';
+
+/** cardmirror's block vocabulary — the node types its exporter can emit. */
+export type BlockType =
+  | 'pocket'
+  | 'hat'
+  | 'block'
+  | 'tag'
+  | 'analytic'
+  | 'undertag'
+  | 'cite_paragraph'
+  | 'card_body'
+  | 'paragraph';
+
+/** cardmirror's run vocabulary. */
+export type RunType =
+  | 'underline_mark'
+  | 'emphasis_mark'
+  | 'cite_mark'
+  | 'analytic_mark'
+  | 'undertag_mark';
 
 /** lowercased w:name -> legacy role. */
 export const LEGACY_BY_NAME: Record<string, string> = {
@@ -114,12 +134,10 @@ export const TYPE_BY_EXPORT_STYLE: Record<string, BlockType | RunType> = Object.
     .map(([type, styleId]) => [styleId, type]),
 );
 
-/** cardmirror's model has no page break of its own: `<w:br w:type="page"/>`
- *  imports as a plain line break and exports as one, so a manual break has to
- *  survive as ordinary text between saves. a paragraph whose whole text is
- *  this is one. work view draws it as word's dotted rule; the rewrite turns
- *  it back into a real break. */
-export const PAGE_BREAK_TEXT = '[page break]';
+/** what an earlier laymirror wrote into the document to stand in for a page
+ *  break. breaks are held outside the document now — see docx/breaks.ts — and
+ *  this survives only so an old document can be cleaned up on its next save. */
+export const LEGACY_SENTINEL = '[page break]';
 
 /** heading level (from w:outlineLvl + 1) -> block type. */
 export const HEADING_LEVEL_TO_TYPE: Record<number, BlockType> = {
@@ -149,38 +167,44 @@ export function takesNativePath(styleIds: Iterable<string>, styleNames: Iterable
 }
 
 export interface MappingWarning {
-  type: BlockType | RunType;
+  styleId: string;
   styleName: string;
   message: string;
 }
 
-/** block types reimport by lowercased name; a name outside the legacy table
- *  exports fine and comes back as a plain paragraph. */
-const BLOCK_TYPES: readonly BlockType[] = [
-  'pocket',
-  'hat',
-  'block',
-  'tag',
-  'cite_paragraph',
-  'card_body',
-];
-
+/** warn where a mapping will not survive the trip home.
+ *
+ *  cardmirror reads a reopened document one of two ways. it takes the native
+ *  path only when the styles look like its own, and otherwise falls back to
+ *  matching paragraph styles by lowercased `w:name` and character styles by a
+ *  small id table. so a template style that is in neither table exports
+ *  perfectly into word and comes back as an ordinary paragraph — which is the
+ *  failure worth telling the user about before they cut a whole file. */
 export function validateMapping(profile: Profile): MappingWarning[] {
-  const warnings: MappingWarning[] = [];
+  const byId = new Map(profile.styles.map((s) => [s.id, s]));
+  const targets = [
+    ...Object.values(profile.styleMap),
+    profile.bareStyles.cite_paragraph,
+    profile.bareStyles.card_body,
+  ].filter((id): id is string => !!id);
 
-  for (const type of BLOCK_TYPES) {
-    const spec = profile.types[type];
-    const byName = LEGACY_BY_NAME[spec.styleName.toLowerCase()];
-    const byId = LEGACY_BY_ID[spec.styleId];
-    // headings resolve by outline level instead of by name
-    const isHeading = spec.outlineLevel !== undefined && spec.outlineLevel !== null;
-    if (!byName && !byId && !isHeading) {
-      warnings.push({
-        type,
-        styleName: spec.styleName,
-        message: `cardmirror does not know a style called "${spec.styleName}", so this text comes back as an ordinary paragraph when the file is reopened`,
-      });
-    }
+  const warnings: MappingWarning[] = [];
+  const seen = new Set<string>();
+
+  for (const id of targets) {
+    if (seen.has(id)) continue;
+    seen.add(id);
+    const style = byId.get(id);
+    const name = style?.name ?? id;
+    // headings resolve by outline level rather than by name, so they are safe
+    if (/^Heading\d$/.test(id)) continue;
+    if (LEGACY_BY_NAME[name.toLowerCase()] || LEGACY_BY_ID[id]) continue;
+    if (NATIVE_MARK_BY_ID[id]) continue;
+    warnings.push({
+      styleId: id,
+      styleName: name,
+      message: `cardmirror does not recognise a style called "${name}", so this text comes back as an ordinary paragraph when the file is reopened`,
+    });
   }
 
   return warnings;
