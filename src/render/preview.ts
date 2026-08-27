@@ -1,4 +1,4 @@
-// page view: the document as word will print it.
+// page view: the document as word will print it, and the way it gets printed.
 //
 // nothing here lays out text. docx-preview renders the real .docx — the
 // school's own styles.xml, theme, header and footer, at the template's real
@@ -7,13 +7,15 @@
 // block was skipped by `content-visibility: auto` and measured as its
 // placeholder height. this reads the file instead, so there is nothing to
 // virtualize away.
+//
+// this is also the print pipeline. a plugin cannot hand a file to word —
+// cardmirror's `openExternal` accepts http(s) and mailto and nothing else — so
+// the honest route to paper is to render the real package here and let chromium
+// print it. electron's print dialog offers "save as pdf", which is the pdf
+// export as well.
 
 import { renderAsync } from 'docx-preview';
-import {
-  hasManualBreaks,
-  hasRenderedBreaks,
-  injectBreaksAt,
-} from '../docx/breaks.js';
+import { hasRenderedBreaks, injectBreaksAt } from '../docx/breaks.js';
 import { readText, toBlob, unzip, writeText, zip } from '../docx/zip.js';
 import { fillPages } from './fill.js';
 
@@ -23,7 +25,7 @@ const DOCUMENT = 'word/document.xml';
 
 /** how the pages were decided, which the chrome states plainly — a preview
  *  that quietly guesses is worse than one that says it guessed. */
-export type Pagination = 'word' | 'manual' | 'estimated';
+export type Pagination = 'word' | 'document' | 'estimated';
 
 export interface PreviewResult {
   pages: number;
@@ -150,7 +152,6 @@ function estimateBreaks(root: HTMLElement): number[] {
 export interface PreviewOptions {
   /** shown in the bar so the user knows what they are looking at. */
   label?: string;
-  onOpenInWord?: () => void;
 }
 
 /** render the file at `bytes`. resolves once the pages are on screen. */
@@ -174,13 +175,17 @@ export async function openPreview(
   document.body.append(root);
 
   const documentXml = readText(unzip(bytes), DOCUMENT) ?? '';
-  let pagination: Pagination = hasRenderedBreaks(documentXml)
-    ? 'word'
-    : hasManualBreaks(documentXml)
-      ? 'manual'
-      : 'estimated';
-
   let pages = await render(bytes, body);
+
+  // word's own `lastRenderedPageBreak` is exact. failing that, more than one
+  // rendered page means the file broke itself — a template that starts a new
+  // page before every heading 1 does this without anyone typing a break — and
+  // estimating on top of that would break every page twice.
+  const pagination: Pagination = hasRenderedBreaks(documentXml)
+    ? 'word'
+    : pages > 1
+      ? 'document'
+      : 'estimated';
 
   // nothing in the file said where the pages end, so work it out from the
   // layout the renderer just produced and render once more with real breaks
@@ -209,7 +214,7 @@ export async function openPreview(
 
 const NOTE: Record<Pagination, string> = {
   word: 'pages as word laid them out',
-  manual: 'pages broken where you asked',
+  document: 'pages break where the template says',
   estimated: 'approximate — save from word for exact pages',
 };
 
@@ -232,20 +237,13 @@ function chrome(pages: number, pagination: Pagination, options: PreviewOptions):
     frag.append(label);
   }
 
+  // electron's print dialog carries "save as pdf", so this is the pdf export
+  // as well as the printer — laymirror has no shell to hand the file to word
   const print = document.createElement('button');
   print.type = 'button';
-  print.textContent = 'print';
+  print.textContent = 'print / pdf';
   print.addEventListener('click', () => window.print());
   frag.append(print);
-
-  if (options.onOpenInWord) {
-    const word = document.createElement('button');
-    word.type = 'button';
-    // the only perfectly faithful preview there will ever be
-    word.textContent = 'open in word';
-    word.addEventListener('click', options.onOpenInWord);
-    frag.append(word);
-  }
 
   const close = document.createElement('button');
   close.type = 'button';

@@ -35,6 +35,8 @@ export function writeText(parts: Parts, name: string, xml: string): void {
   parts[name] = strToU8(xml);
 }
 
+export const strToBytes = (text: string): Uint8Array => strToU8(text);
+
 /** a Blob of a docx package, for anything that wants the file rather than the
  *  parts. the copy is deliberate: a view onto a larger buffer would hand the
  *  reader the wrong bytes. */

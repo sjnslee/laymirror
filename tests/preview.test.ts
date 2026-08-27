@@ -56,7 +56,7 @@ suite('page view', () => {
 
   it('says how the pages were decided', async () => {
     const result = await openPreview(bytes());
-    expect(['word', 'manual', 'estimated']).toContain(result.pagination);
+    expect(['word', 'document', 'estimated']).toContain(result.pagination);
     const bar = document.querySelector(`#${PREVIEW_ID} .lm-bar`)!;
     expect(bar.textContent).toContain('page');
   });

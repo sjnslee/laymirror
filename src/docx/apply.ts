@@ -1,27 +1,24 @@
 // the save pipeline.
 //
 // cardmirror's exporter rebuilds the package from scratch on every save: its
-// own styles.xml, one hardcoded letter section with 1" margins, and no
-// header, footer or theme at all. so this is not a formatter. it is the thing
-// that puts back what the exporter has just thrown away.
+// own styles.xml, one hardcoded letter section with 1" margins, and no header,
+// footer or theme at all. so this is not a formatter. it is the thing that puts
+// back what the exporter has just thrown away.
 //
-// exactly one question decides what happens, and only word can answer it: does
-// the file carry a header reference? cardmirror never writes one, so if there
-// is one, word wrote this file and it is authoritative — we re-adopt it and
-// touch nothing. if there is not, cardmirror just stripped it, and we restore.
+// the template is authoritative, every time. an earlier version asked whether
+// word had written the file and adopted its header if so, which made a header
+// something you edited in word and laymirror preserved. that is backwards for a
+// squad: the school's header is fixed, and the two or three words inside it
+// that change are typed into laymirror's panel, so a file that has been through
+// word comes out looking exactly like a file that has not.
 
-import { EXPORT_STYLE_BY_TYPE, LEGACY_SENTINEL } from '../profile/mapping.js';
-import type { Profile } from '../profile/profile.js';
-import { injectBreaks, paragraphSpans, type PageBreak } from './breaks.js';
+import { fillFields, type Values } from './fields.js';
 import { writeMarker } from './marker.js';
-import {
-  captureSnapshot,
-  hasOwnHeader,
-  restoreSnapshot,
-  type Snapshot,
-} from './snapshot.js';
+import { restoreSnapshot } from './snapshot.js';
+import { headerParts, type Blueprint } from '../template/template.js';
+import { EXPORT_STYLE_BY_TYPE } from '../template/styles.js';
 import { parseXml, serializeXml } from './xml.js';
-import { isDocx, readText, unzip, writeText, zip, type Parts } from './zip.js';
+import { isDocx, readText, strToBytes, unzip, writeText, zip, type Parts } from './zip.js';
 
 const DOCUMENT = 'word/document.xml';
 const SETTINGS = 'word/settings.xml';
@@ -34,12 +31,7 @@ const TEMPLATE_REL_ID = 'rIdLayMirrorTemplate';
 const CITE_EXPORT = EXPORT_STYLE_BY_TYPE.cite_mark!;
 const UNDERLINE_EXPORT = EXPORT_STYLE_BY_TYPE.underline_mark!;
 
-export type SaveOutcome =
-  /** word wrote this file. its header is the truth; keep it. */
-  | { kind: 'adopted'; snapshot: Snapshot }
-  /** cardmirror wrote it, and we put the school's document back. */
-  | { kind: 'restored'; bytes: Uint8Array }
-  | { kind: 'skipped'; because: string };
+const W = 'http://schemas.openxmlformats.org/wordprocessingml/2006/main';
 
 function directChild(parent: Element, tag: string): Element | null {
   const children = parent.childNodes;
@@ -56,8 +48,6 @@ function elements(parent: Element, tag: string): Element[] {
   for (let i = 0; i < found.length; i++) out.push(found.item(i)!);
   return out;
 }
-
-const W = 'http://schemas.openxmlformats.org/wordprocessingml/2006/main';
 
 function setPStyle(doc: Document, paragraph: Element, styleId: string): void {
   let pPr = directChild(paragraph, 'w:pPr');
@@ -78,10 +68,10 @@ function setPStyle(doc: Document, paragraph: Element, styleId: string): void {
  *
  *  a cite paragraph and a card body leave cardmirror with no style of their
  *  own, and `card` is flattened away on export, so the marks inside are the
- *  only evidence left in the file. the inference reaches exactly one
- *  paragraph past the last mark it saw: guessing further would indent
- *  ordinary prose, while leaving a paragraph bare merely renders it as the
- *  template's Normal, which is the cheaper mistake. */
+ *  only evidence left in the file. the inference reaches exactly one paragraph
+ *  past the last mark it saw: guessing further would indent ordinary prose,
+ *  while leaving a paragraph bare merely renders it as the template's Normal,
+ *  which is the cheaper mistake. */
 function classifyBare(
   paragraph: Element,
   openCard: boolean,
@@ -98,7 +88,7 @@ function classifyBare(
 }
 
 /** cardmirror's export style ids -> the template's own. */
-export function applyStyles(documentXml: string, profile: Profile): string {
+export function applyStyles(documentXml: string, blueprint: Blueprint): string {
   const doc = parseXml(documentXml, DOCUMENT);
   let openCard = false;
 
@@ -108,13 +98,13 @@ export function applyStyles(documentXml: string, profile: Profile): string {
     const exported = pStyle?.getAttribute('w:val') ?? null;
 
     if (exported !== null) {
-      const mapped = profile.styleMap[exported];
+      const mapped = blueprint.styleMap[exported];
       if (mapped) pStyle!.setAttribute('w:val', mapped);
       // a heading, a tag or an analytic closes whatever card was open
       openCard = false;
     } else {
       const type = classifyBare(paragraph, openCard);
-      const target = type ? profile.bareStyles[type] : null;
+      const target = type ? blueprint.bareStyles[type] : null;
       if (target) setPStyle(doc, paragraph, target);
       openCard =
         type === 'cite_paragraph' ||
@@ -124,7 +114,7 @@ export function applyStyles(documentXml: string, profile: Profile): string {
     }
 
     for (const rStyle of elements(paragraph, 'w:rStyle')) {
-      const mapped = profile.styleMap[rStyle.getAttribute('w:val') ?? ''];
+      const mapped = blueprint.styleMap[rStyle.getAttribute('w:val') ?? ''];
       if (mapped) rStyle.setAttribute('w:val', mapped);
     }
   }
@@ -176,57 +166,31 @@ function pointAttachedTemplate(parts: Parts, template: string | null): void {
   );
 }
 
-/** an earlier laymirror carried manual breaks as the literal text
- *  `[page break]`. breaks live outside the document now, so a paragraph that
- *  is nothing but the old sentinel is swept up rather than printed. */
-export function dropLegacySentinel(documentXml: string): string {
-  const doomed = paragraphSpans(documentXml).filter(
-    (span) =>
-      span.xml
-        .replace(/<[^>]*>/g, '')
-        .trim() === LEGACY_SENTINEL,
-  );
-  let xml = documentXml;
-  for (const span of doomed.reverse()) {
-    xml = xml.slice(0, span.start) + xml.slice(span.end);
-  }
-  return xml;
-}
-
-/** throws rather than returning something half-written: this runs against a
+/** put the school's document onto a package cardmirror has just written.
+ *
+ *  throws rather than returning something half-written: this runs against a
  *  file the user is actively saving, and a partial read must never become a
  *  partial write. */
-export function applyProfile(
+export function applyTemplate(
   bytes: Uint8Array,
-  profile: Profile,
-  breaks: readonly PageBreak[] = [],
-): SaveOutcome {
+  blueprint: Blueprint,
+  values: Values,
+  templateId: string,
+): Uint8Array {
   const parts = unzip(bytes);
   if (!isDocx(parts)) throw new Error('not a complete docx — read again in a moment');
 
-  // only word writes a header reference. if there is one, this file is word's
-  // and its header carries whatever the user typed into it — adopt, never
-  // overwrite. this is what makes a hand-edited team code permanent.
-  if (hasOwnHeader(parts)) {
-    const snapshot = captureSnapshot(parts);
-    return snapshot
-      ? { kind: 'adopted', snapshot }
-      : { kind: 'skipped', because: 'nothing to adopt' };
-  }
-
-  if (!profile.snapshot) return { kind: 'skipped', because: 'no template loaded' };
-
   const documentXml = readText(parts, DOCUMENT);
   if (!documentXml) throw new Error('document.xml is unreadable');
+  writeText(parts, DOCUMENT, applyStyles(documentXml, blueprint));
 
-  writeText(parts, DOCUMENT, applyStyles(dropLegacySentinel(documentXml), profile));
-  restoreSnapshot(parts, profile.snapshot);
+  const filled = fillFields(headerParts(blueprint.snapshot), values);
+  const override: Record<string, Uint8Array> = {};
+  for (const [name, xml] of Object.entries(filled)) override[name] = strToBytes(xml);
 
-  const restored = readText(parts, DOCUMENT)!;
-  writeText(parts, DOCUMENT, injectBreaks(restored, breaks));
+  restoreSnapshot(parts, blueprint.snapshot, override);
+  pointAttachedTemplate(parts, blueprint.snapshot.attachedTemplate);
+  writeMarker(parts, templateId);
 
-  pointAttachedTemplate(parts, profile.snapshot.attachedTemplate);
-  writeMarker(parts, profile.id);
-
-  return { kind: 'restored', bytes: zip(parts) };
+  return zip(parts);
 }
