@@ -49,7 +49,7 @@ describe('marker', () => {
     writeMarker(parts, 'one');
     writeMarker(parts, 'two');
     const xml = readText(parts, 'docProps/custom.xml') ?? '';
-    expect(xml.match(/name="layMirrorProfile"/g)).toHaveLength(1);
+    expect(xml.match(/name="layMirrorTemplate"/g)).toHaveLength(1);
     expect(readMarker(parts)).toBe('two');
   });
 

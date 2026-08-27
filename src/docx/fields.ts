@@ -194,11 +194,17 @@ function place(partName: string, doc: Document): Placed[] {
   return out;
 }
 
+/** headers first, then footers, each in part order — the order they read on
+ *  the page, rather than the order they sort in. */
+const inReadingOrder = (parts: Record<string, string>): string[] =>
+  Object.keys(parts)
+    .filter((name) => HEADER_OR_FOOTER.test(name))
+    .sort((a, b) => Number(a.includes('/footer')) - Number(b.includes('/footer')) || a.localeCompare(b));
+
 /** every field in a template's headers and footers, in reading order. */
 export function findFields(parts: Record<string, string>): Field[] {
   const out: Field[] = [];
-  for (const name of Object.keys(parts).sort()) {
-    if (!HEADER_OR_FOOTER.test(name)) continue;
+  for (const name of inReadingOrder(parts)) {
     const doc = parseXml(parts[name]!, name);
     for (const { key, label } of place(name, doc)) out.push({ key, label, part: name });
   }

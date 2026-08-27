@@ -16,7 +16,7 @@
 //
 // verified against the shipped 1.3.0 parse worker.
 
-import type { Profile } from './profile.js';
+
 
 /** cardmirror's block vocabulary — the node types its exporter can emit. */
 export type BlockType =
@@ -180,13 +180,25 @@ export interface MappingWarning {
  *  small id table. so a template style that is in neither table exports
  *  perfectly into word and comes back as an ordinary paragraph — which is the
  *  failure worth telling the user about before they cut a whole file. */
-export function validateMapping(profile: Profile): MappingWarning[] {
-  const byId = new Map(profile.styles.map((s) => [s.id, s]));
+export function validateMapping(
+  styles: readonly StyleInfo[],
+  styleMap: Record<string, string>,
+  bareStyles: BareStyles,
+): MappingWarning[] {
+  const byId = new Map(styles.map((style) => [style.id, style]));
   const targets = [
-    ...Object.values(profile.styleMap),
-    profile.bareStyles.cite_paragraph,
-    profile.bareStyles.card_body,
+    ...Object.values(styleMap),
+    bareStyles.cite_paragraph,
+    bareStyles.card_body,
   ].filter((id): id is string => !!id);
+
+  // on the native path cardmirror matches paragraph styles by id, so any id
+  // its own exporter emits comes back as the type it left as. the legacy
+  // tables are the fallback, and `Analytic` is in neither of them.
+  const native = takesNativePath(
+    styles.map((style) => style.id),
+    styles.map((style) => style.name),
+  );
 
   const warnings: MappingWarning[] = [];
   const seen = new Set<string>();
@@ -198,6 +210,7 @@ export function validateMapping(profile: Profile): MappingWarning[] {
     const name = style?.name ?? id;
     // headings resolve by outline level rather than by name, so they are safe
     if (/^Heading\d$/.test(id)) continue;
+    if (native && TYPE_BY_EXPORT_STYLE[id]) continue;
     if (LEGACY_BY_NAME[name.toLowerCase()] || LEGACY_BY_ID[id]) continue;
     if (NATIVE_MARK_BY_ID[id]) continue;
     warnings.push({
@@ -208,4 +221,158 @@ export function validateMapping(profile: Profile): MappingWarning[] {
   }
 
   return warnings;
+}
+
+// ── reading a template's own styles ───────────────────────────────────
+
+export interface StyleInfo {
+  id: string;
+  name: string;
+  kind: 'paragraph' | 'character' | 'table' | 'numbering';
+  basedOn: string | null;
+  /** `w:pageBreakBefore` stated by this style itself. null means it said
+   *  nothing, so the answer comes from whatever it is based on. */
+  breakBefore: boolean | null;
+}
+
+const attr = (tag: string, name: string): string | null =>
+  new RegExp(`\\b${name}="([^"]*)"`).exec(tag)?.[1] ?? null;
+
+/** a `w:val` of "0" or "false" turns a toggle off; anything else, including
+ *  the attribute being absent entirely, turns it on. */
+function toggle(block: string, tag: string): boolean | null {
+  const found = new RegExp(`<${tag}\\b[^>]*/?>`).exec(block);
+  if (!found) return null;
+  const val = attr(found[0], 'w:val');
+  return val !== '0' && val !== 'false';
+}
+
+export function readStyles(stylesXml: string): StyleInfo[] {
+  const out: StyleInfo[] = [];
+  for (const match of stylesXml.matchAll(/<w:style\b[^>]*>[\s\S]*?<\/w:style>/g)) {
+    const block = match[0];
+    const open = /<w:style\b[^>]*>/.exec(block)![0];
+    const id = attr(open, 'w:styleId');
+    if (!id) continue;
+    out.push({
+      id,
+      name: /<w:name\b[^>]*w:val="([^"]*)"/.exec(block)?.[1] ?? id,
+      kind: (attr(open, 'w:type') ?? 'paragraph') as StyleInfo['kind'],
+      basedOn: /<w:basedOn\b[^>]*w:val="([^"]*)"/.exec(block)?.[1] ?? null,
+      breakBefore: toggle(block, 'w:pageBreakBefore'),
+    });
+  }
+  return out;
+}
+
+/** does word start a new page before a paragraph in this style?
+ *
+ *  a lay template answers yes for heading 1, which is where the page breaks in
+ *  a lay file come from — nobody types them. the property inherits down a
+ *  `basedOn` chain, so the chain is walked rather than the style read. */
+export function breaksBefore(styles: readonly StyleInfo[], styleId: string): boolean {
+  const byId = new Map(styles.map((style) => [style.id, style]));
+  const seen = new Set<string>();
+
+  let cursor = byId.get(styleId);
+  while (cursor && !seen.has(cursor.id)) {
+    seen.add(cursor.id);
+    if (cursor.breakBefore !== null) return cursor.breakBefore;
+    cursor = cursor.basedOn ? byId.get(cursor.basedOn) : undefined;
+  }
+  return false;
+}
+
+/** cardmirror's own legacy tables say which of a school's styles means what:
+ *  it matches paragraph styles by lowercased `w:name` and character styles by
+ *  a small id table. reading the same tables here means the mapping we pick is
+ *  the one cardmirror will agree with when the file comes back. */
+const roleOf = (style: StyleInfo): string | null =>
+  LEGACY_BY_NAME[style.name.toLowerCase()] ?? LEGACY_BY_ID[style.id] ?? null;
+
+/** the role each cardmirror export style is looking for a home for, and the
+ *  kind of style it must land on. a run style mapped onto a paragraph style
+ *  would be written as an `rStyle` word cannot resolve, so the kinds are
+ *  checked rather than assumed. */
+const WANTED: Record<string, { role: string; kind: StyleInfo['kind'] }> = {
+  Heading4: { role: 'tag', kind: 'paragraph' },
+  Style13ptBold: { role: 'char-cite', kind: 'character' },
+  StyleUnderline: { role: 'char-underline', kind: 'character' },
+};
+
+/** every style playing each role, in definition order.
+ *
+ *  all of them, not just the first: cardmirror's own `Heading4` is named
+ *  "heading 4", which its legacy table also reads as a tag — so a template's
+ *  `Tag` would lose to the very style we are trying to move away from. */
+function rolesIn(styles: readonly StyleInfo[], kind?: StyleInfo['kind']): Map<string, string[]> {
+  const byRole = new Map<string, string[]>();
+  for (const style of styles) {
+    if (kind && style.kind !== kind) continue;
+    const role = roleOf(style);
+    if (!role) continue;
+    byRole.set(role, [...(byRole.get(role) ?? []), style.id]);
+  }
+  return byRole;
+}
+
+export interface BareStyles {
+  cite_paragraph: string | null;
+  card_body: string | null;
+}
+
+/** the two paragraph types cardmirror exports with no style at all. */
+export function deriveBareStyles(styles: readonly StyleInfo[]): BareStyles {
+  const byRole = rolesIn(styles, 'paragraph');
+  return {
+    cite_paragraph: byRole.get('cite')?.[0] ?? null,
+    card_body: byRole.get('body')?.[0] ?? null,
+  };
+}
+
+/** map cardmirror's export ids onto the template's own.
+ *
+ *  identity is the default and is usually right for Heading1-3. it is wrong
+ *  for a tag: cardmirror exports one as `Heading4`, but a template whose tag
+ *  style is its own `Tag` would render every tag in word's stock italic blue.
+ *  so where the template defines a style whose role matches, that wins. */
+export function deriveStyleMap(styles: readonly StyleInfo[]): Record<string, string> {
+  const defined = new Set(styles.map((style) => style.id));
+  const byKind = {
+    paragraph: rolesIn(styles, 'paragraph'),
+    character: rolesIn(styles, 'character'),
+  };
+
+  const map: Record<string, string> = {};
+  for (const exportId of Object.values(EXPORT_STYLE_BY_TYPE)) {
+    if (!exportId) continue;
+    const wanted = WANTED[exportId];
+    // the school's own style, never cardmirror's — a candidate equal to the id
+    // we are remapping is the thing we are trying to get away from
+    const preferred = wanted
+      ? (byKind[wanted.kind as 'paragraph' | 'character'] ?? byKind.paragraph)
+          .get(wanted.role)
+          ?.find((id) => id !== exportId)
+      : undefined;
+    // never map onto a style the template does not define — word would show
+    // the text unstyled, which is worse than cardmirror's own default
+    if (preferred && preferred !== exportId) map[exportId] = preferred;
+    else if (defined.has(exportId)) map[exportId] = exportId;
+  }
+  return map;
+}
+
+/** the cardmirror block types the template starts a new page before. this is
+ *  what the editor draws a rule above: it is read from the template rather
+ *  than remembered, so a school that breaks before hats too gets that for
+ *  free. */
+export function breakingTypes(
+  styles: readonly StyleInfo[],
+  styleMap: Record<string, string>,
+): BlockType[] {
+  const out: BlockType[] = [];
+  for (const [exportId, type] of Object.entries(TYPE_BY_EXPORT_STYLE)) {
+    if (breaksBefore(styles, styleMap[exportId] ?? exportId)) out.push(type as BlockType);
+  }
+  return out;
 }
