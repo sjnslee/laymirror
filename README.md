@@ -46,7 +46,9 @@ npm run build
 ```
 
 in cardmirror: settings → plugins → developer → "load plugin from
-file…" → `plugin.js`.
+file…" → `plugin.js`. that path is session-only, so it wants doing again after
+a restart; templates and header values survive, they are in cardmirror's own
+storage.
 
 | | |
 | --- | --- |
@@ -74,6 +76,11 @@ so a file a teammate marked arrives already lay.
   styles at the right size — close, and capable of drifting a line over a long
   document. the bar says which.
 - page view shows the file on disk, not unsaved edits.
+- page view is docx-preview, not word. it does not draw a positional tab
+  (`w:ptab`) or an anchored text box, so a header that right-aligns its file
+  title with one, or draws its rule with the other, reads as one run of text
+  there. the file itself is untouched and word prints it correctly — page view
+  is for where the pages fall, not for proofing the header.
 - laymirror finds the open document through cardmirror's recent-files history.
   two open files with the same name are ambiguous, and it says so rather than
   rewriting the wrong one.

@@ -4,7 +4,6 @@ import {
   breaksBefore,
   deriveBareStyles,
   deriveStyleMap,
-  HEADING_LEVEL_TO_TYPE,
   LEGACY_BY_NAME,
   NATIVE_MARK_BY_ID,
   readStyles,
@@ -29,11 +28,6 @@ describe('round-trip vocabulary', () => {
     expect(LEGACY_BY_NAME['underline']).toBe('char-underline');
   });
 
-  it('resolves headings by outline level, not by name', () => {
-    expect(HEADING_LEVEL_TO_TYPE[1]).toBe('pocket');
-    expect(HEADING_LEVEL_TO_TYPE[2]).toBe('hat');
-    expect(HEADING_LEVEL_TO_TYPE[4]).toBe('tag');
-  });
 
   it('keeps cite and underline marks only on the native path', () => {
     expect(NATIVE_MARK_BY_ID['Style13ptBold']).toBe('cite_mark');

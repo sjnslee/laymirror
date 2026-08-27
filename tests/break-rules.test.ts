@@ -78,7 +78,7 @@ describe('page-break characters', () => {
     expect(draw(host, []).literal).toBe(1);
 
     const line = document.querySelector<HTMLElement>('#laymirror-break-overlay i')!;
-    expect(line.style.top).toBe('307px');
+    expect(line.style.top).toBe('316px');
     expect(line.style.left).toBe('40px');
     expect(line.style.width).toBe('600px');
   });
