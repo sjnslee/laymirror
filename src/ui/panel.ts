@@ -174,8 +174,8 @@ export function refresh(): void {
   const lay = document.createElement('section');
   lay.append(
     row(
-      'lay formatting',
-      button(it.on() ? 'on' : 'off', () => void act(() => it.onToggle()), it.on()),
+      it.on() ? 'lay formatting is on' : 'lay formatting is off',
+      button(it.on() ? 'turn off' : 'turn on', () => void act(() => it.onToggle()), !it.on()),
     ),
   );
   body.append(lay);

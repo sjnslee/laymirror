@@ -33,6 +33,7 @@ const SYNC_MS = 1500;
 let watcher: Watcher | null = null;
 let watching: string | null = null;
 let syncing: ReturnType<typeof setInterval> | null = null;
+let drawn: string | null = null;
 /** parsing a template is a few milliseconds of unzip; a save should not pay
  *  for it twice. */
 const blueprints = new Map<string, Blueprint>();
@@ -192,6 +193,7 @@ function sync(api: PluginApi): void {
       watching = null;
     }
     if (rulesShown()) clearRules();
+    drawn = null;
     return;
   }
 
@@ -203,9 +205,16 @@ function sync(api: PluginApi): void {
     else watcher?.stop();
   }
 
+  // redrawing costs a stylesheet rebuild and a walk of the editor's text, so
+  // it happens when the answer could have changed, not on every tick
+  const templateId = templateIdFor(bag, key);
+  const stamp = `${key}\u0000${templateId}`;
+  if (stamp === drawn && rulesShown()) return;
+
   const host = editor();
-  const blueprint = blueprintFor(bag, templateIdFor(bag, key));
-  if (host) drawRules(host, blueprint?.breaks ?? []);
+  if (!host) return;
+  drawRules(host, blueprintFor(bag, templateId)?.breaks ?? []);
+  drawn = stamp;
 }
 
 function ensureSession(api: PluginApi): void {
