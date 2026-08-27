@@ -102,8 +102,15 @@ export function draw(
     ? editor.querySelectorAll(selectors.map((sel) => `${sel}:not(:first-child)`).join(',')).length
     : 0;
 
-  startTracking(editor);
-  return { styled, literal: paint(editor) };
+  // the overlay costs a walk of every text node in the document, and it has to
+  // run again on every edit and every scroll to stay in the right place. a
+  // document with no break characters in it — which is nearly all of them —
+  // is not worth watching, so nothing is tracked until one turns up.
+  const literal = paint(editor);
+  if (literal > 0) startTracking(editor);
+  else stopTracking();
+
+  return { styled, literal };
 }
 
 // ── the overlay ───────────────────────────────────────────────────────
@@ -116,8 +123,12 @@ const repaint = (): void => {
   if (pending) return;
   pending = requestAnimationFrame(() => {
     pending = 0;
-    if (tracked?.isConnected) paint(tracked);
-    else clear();
+    if (!tracked?.isConnected) {
+      clear();
+      return;
+    }
+    // the last one going means there is nothing left to follow
+    if (paint(tracked) === 0) stopTracking();
   });
 };
 
