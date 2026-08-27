@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { makeDocx } from './fixture.js';
 import { zip, unzip, isDocx, readText, CONTENT_TYPES } from '../src/docx/zip.js';
-import { readMarker, writeMarker, clearMarker, readDocId } from '../src/docx/marker.js';
+import { readMarker, writeMarker, clearMarker } from '../src/docx/marker.js';
 
 describe('zip', () => {
   it('round-trips every part', () => {
@@ -40,7 +40,7 @@ describe('marker', () => {
   it('preserves cardmirror doc id and other properties', () => {
     const parts = makeDocx();
     writeMarker(parts, 'sample-lay');
-    expect(readDocId(parts)).toBe('doc-abc-123');
+    expect(readText(parts, 'docProps/custom.xml')).toContain('doc-abc-123');
     expect(readText(parts, 'docProps/custom.xml')).toContain('ContentTypeId');
   });
 
@@ -91,6 +91,6 @@ describe('marker', () => {
     clearMarker(parts);
     const back = unzip(zip(parts));
     expect(readMarker(back)).toBeNull();
-    expect(readDocId(back)).toBe('doc-abc-123');
+    expect(readText(back, 'docProps/custom.xml')).toContain('doc-abc-123');
   });
 });

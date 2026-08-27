@@ -6,8 +6,6 @@
 // verified by reading the shipped build (/Applications/cardmirror.app,
 // app.asar) and by the phase 0 spike run against a live editor.
 
-export const VERIFIED_AGAINST = '1.3.0';
-
 /** the editor container. `#editor` observed in the spike; the pane class
  *  is the multi-pane form. */
 export const EDITOR_SELECTOR = '#editor, .pmd-pane-editor';
@@ -37,7 +35,6 @@ export const TITLE_SUFFIX = ' — CardMirror';
 
 /** our marker, stored beside cardmirror's own `cmirDocId`. */
 export const MARKER_PROP = 'layMirrorTemplate';
-export const DOC_ID_PROP = 'cmirDocId';
 
 /** a `pmd-recent-files` entry. `handle` is an absolute path on electron.
  *

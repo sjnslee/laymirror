@@ -36,6 +36,8 @@ const SELECTOR: Partial<Record<BlockType, string>> = {
   tag: `h4.${CLASS.tag}`,
   analytic: `p.${CLASS.analytic}`,
   undertag: `p.${CLASS.undertag}`,
+  cite_paragraph: `p.${CLASS.citePara}`,
+  card_body: `p.${CLASS.cardBody}`,
 };
 
 const RULE = `

@@ -46,7 +46,9 @@ npm run build
 ```
 
 in cardmirror: settings → plugins → developer → "load plugin from
-file…" → `plugin.js`.
+file…" → `plugin.js`. that path is session-only, so it wants doing again after
+a restart; templates and header values survive, they are in cardmirror's own
+storage.
 
 | | |
 | --- | --- |

@@ -3,9 +3,9 @@
 // round-trip, which is what makes activation per-file rather than per-machine.
 //
 // custom.xml is merged, never replaced — cardmirror keeps its doc id there and
-// sharepoint-derived donors keep a ContentTypeId.
+// sharepoint-derived templates keep a ContentTypeId.
 
-import { MARKER_PROP, DOC_ID_PROP } from '../host/cardmirror.js';
+import { MARKER_PROP } from '../host/cardmirror.js';
 import { CONTENT_TYPES, readText, writeText, type Parts } from './zip.js';
 
 const CUSTOM = 'docProps/custom.xml';
@@ -71,23 +71,16 @@ function removeProp(xml: string, name: string): string {
   return xml.replace(propPattern(name), '');
 }
 
-/** the profile id this document is marked with, or null when it isn't a lay
+/** the template id this document is marked with, or null when it isn't a lay
  *  document — the whole off-state hinges on this returning null. */
 export function readMarker(parts: Parts): string | null {
   const xml = readText(parts, CUSTOM);
   return xml ? readProp(xml, MARKER_PROP) : null;
 }
 
-/** cardmirror's own doc id. absent until cardmirror has saved the file, so a
- *  word-authored lay docx has none. */
-export function readDocId(parts: Parts): string | null {
-  const xml = readText(parts, CUSTOM);
-  return xml ? readProp(xml, DOC_ID_PROP) : null;
-}
-
-export function writeMarker(parts: Parts, profileId: string): void {
+export function writeMarker(parts: Parts, templateId: string): void {
   const existing = readText(parts, CUSTOM);
-  writeText(parts, CUSTOM, upsertProp(existing ?? EMPTY_CUSTOM, MARKER_PROP, profileId));
+  writeText(parts, CUSTOM, upsertProp(existing ?? EMPTY_CUSTOM, MARKER_PROP, templateId));
   if (!existing) ensureCustomWired(parts);
 }
 

@@ -152,19 +152,30 @@ async function withOpenDocx(
 // ── keeping the screen and the watcher on the right document ──────────
 
 /** document keys whose marker has already been read, so the file is not
- *  reopened on every tick. */
+ *  reopened on every tick. added before the read rather than after, because a
+ *  tick can fire while the last one is still awaiting. */
 const adopted = new Set<string>();
 
 /** a document carrying laymirror's marker turns itself on. the marker travels
  *  inside the .docx, so a file a teammate marked arrives already lay — which is
- *  the whole reason it is in the file rather than in this machine's storage. */
+ *  the whole reason it is in the file rather than in this machine's storage.
+ *
+ *  a document we could not reach is left unadopted so the next tick tries
+ *  again: cardmirror fills its recent-files history a moment after the document
+ *  appears, and giving up on that moment would leave the file plain. */
 async function adopt(api: PluginApi, key: string): Promise<void> {
   adopted.add(key);
   const located = locate(api);
-  if ('error' in located) return;
+  if ('error' in located) {
+    adopted.delete(key);
+    return;
+  }
 
   const file = await readFile(located.path);
-  if (!file) return;
+  if (!file) {
+    adopted.delete(key);
+    return;
+  }
 
   let marker: string | null = null;
   try {

@@ -134,20 +134,6 @@ export const TYPE_BY_EXPORT_STYLE: Record<string, BlockType | RunType> = Object.
     .map(([type, styleId]) => [styleId, type]),
 );
 
-/** what an earlier laymirror wrote into the document to stand in for a page
- *  break. breaks are held outside the document now — see docx/breaks.ts — and
- *  this survives only so an old document can be cleaned up on its next save. */
-export const LEGACY_SENTINEL = '[page break]';
-
-/** heading level (from w:outlineLvl + 1) -> block type. */
-export const HEADING_LEVEL_TO_TYPE: Record<number, BlockType> = {
-  1: 'pocket',
-  2: 'hat',
-  3: 'block',
-  4: 'tag',
-  5: 'block',
-};
-
 /** cardmirror decides a document is one of its own when its styles contain
  *  all three of these, matched by id OR name. emitting them is what keeps the
  *  native path — and therefore cite and underline marks — alive through a
