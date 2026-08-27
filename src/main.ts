@@ -395,11 +395,11 @@ function openLaymirror(api: PluginApi): void {
     on: () => bag().doc(docKey()).on,
     templateName: () => bag().template(templateIdFor(bag(), docKey()))?.name ?? null,
     breaks: () => {
-      const types = template()?.breaks ?? [];
+      const types = (template()?.breaks ?? []).map((type) => BREAK_NAMES[type] ?? type);
       if (types.length === 0) return null;
-      return `starts a new page before every ${types
-        .map((type) => BREAK_NAMES[type] ?? type)
-        .join(' and ')}`;
+      const last = types.pop()!;
+      const named = types.length > 0 ? `${types.join(', ')} and ${last}` : last;
+      return `starts a new page before every ${named}`;
     },
     fields: () => template()?.fields ?? [],
     values: () => {

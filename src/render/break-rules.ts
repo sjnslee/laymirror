@@ -47,7 +47,8 @@ const RULE = `
   position: absolute;
   left: 0;
   right: 0;
-  top: -1.05em;
+  top: -1.3em;
+  padding-top: 3px;
   border-top: 2px dashed currentColor;
   opacity: .38;
   font: 600 9px/1.2 system-ui, sans-serif;
@@ -168,9 +169,10 @@ function literalBreaks(editor: HTMLElement): Range[] {
   return out;
 }
 
-/** a break character has no width, so its own rect is a zero-wide sliver.
- *  the line is drawn across the editor's text column at that height instead,
- *  which is what a page break looks like. */
+/** a break character has no width, so its own rect is a zero-wide sliver. the
+ *  line is drawn across the whole text column instead, under the line the
+ *  character sits on — a rule through the middle of a sentence reads as a
+ *  strikethrough, and a page ends after a line rather than inside one. */
 function paint(editor: HTMLElement): number {
   const layer = document.getElementById(OVERLAY_ID) ?? document.createElement('div');
   layer.id = OVERLAY_ID;
@@ -190,7 +192,7 @@ function paint(editor: HTMLElement): number {
     const line = document.createElement('i');
     line.style.left = `${frame.left}px`;
     line.style.width = `${frame.width}px`;
-    line.style.top = `${rect.top + rect.height / 2}px`;
+    line.style.top = `${rect.bottom + 2}px`;
     layer.append(line);
     drawn++;
   }

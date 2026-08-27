@@ -3,6 +3,6 @@
   "name": "laymirror",
   "version": "0.1.0",
   "apiVersion": 1,
-  "description": "lay debate documents — word-native docx with pages, headers and footers",
+  "description": "lay debate documents — the school's template, header and pages, put back on every save",
   "license": "PolyForm-Noncommercial-1.0.0"
 }
