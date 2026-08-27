@@ -30,7 +30,7 @@ async function collect(api: PluginApi): Promise<Line[]> {
   const electron = (window as unknown as { electronAPI?: Record<string, unknown> }).electronAPI;
   add('electronAPI', electron ? 'present' : 'MISSING — not the desktop app?');
   if (electron) {
-    for (const method of ['readFileAtPath', 'writeFileAtPath', 'statFile', 'listDocs', 'openExternal']) {
+    for (const method of ['readFileAtPath', 'writeFileAtPath', 'statFile', 'openFile']) {
       add(`  .${method}`, typeof electron[method] === 'function' ? 'ok' : 'MISSING');
     }
   }
@@ -60,14 +60,6 @@ async function collect(api: PluginApi): Promise<Line[]> {
   add('api.docInfo()', api.docInfo());
   const resolved = resolveDocPath(api.docInfo());
   add('resolveDocPath()', resolved);
-
-  if (typeof electron?.['listDocs'] === 'function') {
-    try {
-      add('listDocs()', await (electron['listDocs'] as () => Promise<unknown>)());
-    } catch (err) {
-      add('listDocs()', `threw: ${String(err)}`);
-    }
-  }
 
   // does the renderer we depend on actually exist in this bundle?
   try {
