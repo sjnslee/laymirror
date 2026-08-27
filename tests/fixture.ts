@@ -167,6 +167,7 @@ export function makeTemplate(): Uint8Array {
   writeText(parts, 'word/footer1.xml', DONOR_FOOTER);
   writeText(parts, 'word/_rels/header1.xml.rels', HEADER_RELS);
   writeText(parts, 'word/numbering.xml', '<w:numbering><w:num w:numId="7"/></w:numbering>');
+  writeText(parts, 'word/fontTable.xml', '<w:fonts><w:font w:name="Palatino Linotype"/></w:fonts>');
   parts['word/media/crest.png'] = CREST;
   writeText(
     parts,
@@ -217,6 +218,13 @@ const EXPORT_STYLES =
   '<w:style w:type="character" w:styleId="StyleUnderline"><w:name w:val="Style Underline"/></w:style>' +
   '</w:styles>';
 
+const EXPORT_RELS =
+  '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+  `<Relationships xmlns="${PKG_REL_NS}">` +
+  `<Relationship Id="rId1" Type="${REL_NS}/styles" Target="styles.xml"/>` +
+  `<Relationship Id="rId2" Type="${REL_NS}/settings" Target="settings.xml"/>` +
+  '</Relationships>';
+
 const EXPORT_SETTINGS =
   '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
   `<w:settings xmlns:w="${WML}" xmlns:r="${REL_NS}"><w:attachedTemplate r:id="rId1"/></w:settings>`;
@@ -234,7 +242,9 @@ export function makeExport(): Uint8Array {
   writeText(parts, 'word/styles.xml', EXPORT_STYLES);
   writeText(parts, 'word/settings.xml', EXPORT_SETTINGS);
   writeText(parts, 'word/_rels/settings.xml.rels', EXPORT_SETTINGS_RELS);
-  // nothing laymirror models — it has to come out the far end untouched
+  // the two relationships cardmirror's exporter always writes, and no more:
+  // it never relates a theme or a font table
+  writeText(parts, 'word/_rels/document.xml.rels', EXPORT_RELS);
   writeText(parts, 'word/numbering.xml', '<w:numbering/>');
   return zip(parts);
 }

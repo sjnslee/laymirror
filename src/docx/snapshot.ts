@@ -23,6 +23,21 @@ const HEADER_TYPE = `${REL_BASE}/header`;
 const FOOTER_TYPE = `${REL_BASE}/footer`;
 const TEMPLATE_TYPE = `${REL_BASE}/attachedTemplate`;
 
+/** word resolves these parts through a relationship, not by their name, so a
+ *  part copied in without one is a part word never reads.
+ *
+ *  cardmirror's exporter writes relationships for styles and settings, and for
+ *  numbering only when it emitted a list of its own — it never writes one for
+ *  the theme or the font table. so a template's theme fonts (`asciiTheme=
+ *  "minorHAnsi"`) would resolve to nothing, which is most of a school's
+ *  typography, silently. */
+const RELATED: [RegExp, string][] = [
+  [/\/styles\.xml$/, `${REL_BASE}/styles`],
+  [/\/numbering\.xml$/, `${REL_BASE}/numbering`],
+  [/\/fontTable\.xml$/, `${REL_BASE}/fontTable`],
+  [/\/theme\/theme\d*\.xml$/, `${REL_BASE}/theme`],
+];
+
 /** carried whole whenever the template has them. `numbering.xml` is here
  *  because a lay template numbers its block headings, and a list that
  *  references a missing `numId` renders as nothing at all. */
@@ -261,6 +276,13 @@ export function restoreSnapshot(
     const type = name.includes('/footer') ? FOOTER_TYPE : HEADER_TYPE;
     rels = upsertRelationship(rels, id, type, name.replace(/^word\//, ''));
     remapped[templateId] = id;
+  }
+  for (const name of Object.keys(snapshot.parts)) {
+    const type = RELATED.find(([pattern]) => pattern.test(name))?.[1];
+    // one relationship per type: cardmirror already points at styles.xml, and
+    // a second styles relationship is a package word rejects
+    if (!type || rels.includes(`Type="${type}"`)) continue;
+    rels = upsertRelationship(rels, mintedId(name), type, name.replace(/^word\//, ''));
   }
   writeText(parts, DOC_RELS, rels);
 

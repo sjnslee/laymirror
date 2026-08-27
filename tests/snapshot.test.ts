@@ -163,3 +163,24 @@ describe('readSectPr', () => {
     expect(readSectPr(xml)).toContain('12240');
   });
 });
+
+// word resolves the theme and the font table through a relationship, and
+// cardmirror's exporter never writes one — so a carried theme would be a part
+// word simply never reads
+describe('restoreSnapshot — relationships word needs', () => {
+  it('relates the theme, font table and numbering it carried', () => {
+    const parts = exported();
+    restoreSnapshot(parts, snapshot());
+    const rels = readText(parts, 'word/_rels/document.xml.rels')!;
+    expect(rels).toContain('relationships/theme');
+    expect(rels).toContain('relationships/fontTable');
+    expect(rels).toContain('relationships/numbering');
+  });
+
+  it('leaves the one cardmirror already wrote alone', () => {
+    const parts = exported();
+    restoreSnapshot(parts, snapshot());
+    const rels = readText(parts, 'word/_rels/document.xml.rels')!;
+    expect([...rels.matchAll(/relationships\/styles/g)]).toHaveLength(1);
+  });
+});
