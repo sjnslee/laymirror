@@ -29,6 +29,23 @@ const REAL = hdr(
     '<w:r><w:fldChar w:fldCharType="end"/></w:r></w:p>',
 );
 
+/** the zero-width space a template author wraps editable text in. spelled out
+ *  rather than pasted, because it is invisible in a source file. */
+const ZW = '\u200b';
+
+/** the real BCP header's shape: `<zw>School<zw> <zw>26-27<zw>` — the year split
+ *  across two runs — a right tab, then `<zw>File Title<zw>`. */
+const MARKED = hdr(
+  `<w:p><w:r><w:t>${ZW}School${ZW}</w:t></w:r><w:r><w:t xml:space="preserve"> </w:t></w:r>` +
+    `<w:r><w:t>${ZW}2</w:t></w:r><w:r><w:t>6-27${ZW}</w:t></w:r>` +
+    '<w:r><w:ptab w:relativeTo="margin" w:alignment="right" w:leader="none"/></w:r>' +
+    `<w:r><w:t>${ZW}File Title${ZW}</w:t></w:r></w:p>` +
+    '<w:p><w:r><w:t xml:space="preserve"> Page </w:t></w:r>' +
+    '<w:r><w:fldChar w:fldCharType="begin"/></w:r>' +
+    '<w:r><w:instrText xml:space="preserve"> PAGE </w:instrText></w:r>' +
+    '<w:r><w:fldChar w:fldCharType="end"/></w:r></w:p>',
+);
+
 describe('findFields', () => {
   it('reads a run of text split across runs as one field', () => {
     expect(findFields({ [HDR]: REAL }).map((f) => f.label)).toEqual([
@@ -48,9 +65,33 @@ describe('findFields', () => {
 
   it('prefers a zero-width mark where the template author left one', () => {
     const marked = hdr(
-      '<w:p><w:r><w:t>Property of ⁠Somebody⁠, do not copy</w:t></w:r></w:p>',
+      '<w:p><w:r><w:t>Property of \u2060Somebody\u2060, do not copy</w:t></w:r></w:p>',
     );
     expect(findFields({ [HDR]: marked }).map((f) => f.label)).toEqual(['Somebody']);
+  });
+
+  // this is the shape of the real BCP header: four marked spans, one of them
+  // split across runs by word's revision ids, plain text between them that is
+  // the school's and not the user's
+  it('reads the marks a real school template carries', () => {
+    expect(findFields({ [HDR]: MARKED }).map((f) => f.label)).toEqual([
+      'School',
+      '26-27',
+      'File Title',
+    ]);
+  });
+
+  // a marked template says exactly what is editable, so the tab-and-field
+  // guesswork must not run alongside it and offer the rest of the header too
+  it('offers only what is marked, once anything is', () => {
+    expect(findFields({ [HDR]: MARKED }).map((f) => f.label)).not.toContain('Page');
+  });
+
+  // an author who deleted half a pair should lose that field, not shift every
+  // field after it onto the wrong text
+  it('drops a mark left without its partner', () => {
+    const odd = hdr(`<w:p><w:r><w:t>${ZW}Kept${ZW} tail ${ZW}orphan</w:t></w:r></w:p>`);
+    expect(findFields({ [HDR]: odd }).map((f) => f.label)).toEqual(['Kept']);
   });
 
   it('ignores anything that is not a header or footer', () => {
@@ -95,5 +136,21 @@ describe('fillFields', () => {
     expect([...out[HDR]!.matchAll(/<w:r>/g)]).toHaveLength(
       [...REAL.matchAll(/<w:r>/g)].length,
     );
+  });
+
+  // the value goes between the marks, never over them: eat one and the field
+  // stops existing the next time the template is read
+  it('writes inside the marks and leaves them there', () => {
+    const marked = findFields({ [HDR]: MARKED });
+    const out = fillFields({ [HDR]: MARKED }, {
+      [marked[0]!.key]: 'WDL',
+      [marked[1]!.key]: '27-28',
+    })[HDR]!;
+    expect([...out].filter((c) => c === ZW)).toHaveLength(6);
+    expect(findFields({ [HDR]: out }).map((f) => f.label)).toEqual([
+      'WDL',
+      '27-28',
+      'File Title',
+    ]);
   });
 });

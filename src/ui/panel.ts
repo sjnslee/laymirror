@@ -174,6 +174,12 @@ function note(
 export function refresh(): void {
   const root = document.getElementById(PANEL_ID);
   if (!root || !host) return;
+  // a save can land while a header field is being typed into, and rebuilding
+  // the panel under the caret would eat the word. the value is already held,
+  // so the only thing going stale is the line saying when the last write was
+  if (document.activeElement?.tagName === 'INPUT' && root.contains(document.activeElement)) {
+    return;
+  }
 
   const it = host;
   const body = document.createElement('div');

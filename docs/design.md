@@ -85,20 +85,32 @@ typed into laymirror's panel.
 
 ## header fields
 
-a school header is fixed except for a team code, a year, a file title and a
+a school header is fixed except for a school name, a year, a file title and a
 cutter's name. laymirror finds those inside the school's own header rather than
 building one:
 
-- **marked** — the template wraps a placeholder in a zero-width character.
-  explicit, so it wins.
+- **marked** — the template wraps each placeholder in a zero-width character.
+  the author has said what is editable, so it wins outright: nothing else in
+  that paragraph is offered. the BCP lay template does this, with `U+200B`
+  around `School`, `26-27`, `File Title` and `Name`.
 - **inferred** — no marks anywhere, so every stretch of plain text between tabs
-  and word fields is offered. on a real lay header that is exactly
-  `BCP 26-27`, `File Title` and `Name`.
+  and word fields is offered instead. this is the fallback for a template whose
+  author never marked anything.
+
+a value is written **between** the marks, never over them, so the field is still
+there the next time the template is read and a value can be typed over. marks
+are paired in document order, and one left without a partner drops its field
+rather than shifting every field after it onto the wrong text.
 
 a word field's own decoration is excluded: " page " and " of " read as plain
 text but are not the user's to edit, and the number between them is a result
-word recomputes. a value lands whole in the first run it covers and the rest are
-emptied rather than removed, because the run carries the small caps.
+word recomputes.
+
+a value lands whole in the first run it covers and the rest are emptied rather
+than removed, because the run carries the small caps. this matters more than it
+sounds: word splits a placeholder across runs on its own revision ids, so
+`26-27` arrives as `2` then `6-27`, and writing into each run separately would
+double the value.
 
 discovery always runs against the pristine template, so a field keeps its
 identity after its value has been replaced, and a value can be typed over.
