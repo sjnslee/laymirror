@@ -195,9 +195,6 @@ export function refresh(): void {
   body.append(title, button('×', closePanel));
   (body.lastElementChild as HTMLElement).className = 'lm-close';
 
-  const problem = it.problem();
-  if (problem) body.append(note(problem, 'lm-problem'));
-
   const lay = document.createElement('section');
   lay.append(
     row(
@@ -206,6 +203,21 @@ export function refresh(): void {
     ),
   );
   body.append(lay);
+
+  // off is off: a document laymirror is not touching has no template, no header
+  // and nothing written to it, and offering all three invites the reasonable
+  // assumption that something is happening
+  if (!it.on()) {
+    body.append(
+      note('this document keeps cardmirror\u2019s own formatting. turn it on to wear the school\u2019s template.'),
+      actionRow(it),
+    );
+    root.replaceChildren(...body.childNodes);
+    return;
+  }
+
+  const problem = it.problem();
+  if (problem) body.append(note(problem, 'lm-problem'));
 
   const template = document.createElement('section');
   const name = it.templateName();
@@ -282,12 +294,15 @@ export function refresh(): void {
   }
   body.append(done);
 
+  body.append(actionRow(it));
+  root.replaceChildren(...body.childNodes);
+}
+
+function actionRow(it: PanelHost): HTMLDivElement {
   const actions = document.createElement('div');
   actions.className = 'lm-actions';
   for (const action of it.actions) actions.append(button(action.label, () => void act(action.run)));
-  body.append(actions);
-
-  root.replaceChildren(...body.childNodes);
+  return actions;
 }
 
 /** run an action, then show what it did. the panel is the only feedback

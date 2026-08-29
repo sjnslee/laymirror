@@ -346,6 +346,13 @@ async function toggleLay(api: PluginApi): Promise<void> {
     return;
   }
 
+  // no template yet is the expected first step, not a failure worth a red line
+  // in the panel — the menu has just opened out with the load button in it
+  if (!bag.template(templateIdFor(bag, key))) {
+    api.showToast('lay formatting on — load a template next');
+    return;
+  }
+
   // apply straight away rather than waiting for a save: turning it on and
   // seeing nothing change is indistinguishable from it not having worked
   await applyAndReport(api, 'lay formatting on — template applied');

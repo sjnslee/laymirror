@@ -156,20 +156,38 @@ describe('the panel', () => {
     expect(panel()).toBeNull();
   });
 
-  it('says there is no template until one is loaded', async () => {
+  // a document laymirror is not touching has no template, no header and
+  // nothing written to it, and showing all three reads as if it did
+  it('shows only the switch while lay formatting is off', async () => {
     await host.run('laymirror.panel');
-    expect(panel()!.textContent).toContain('none');
+    expect(panel()!.textContent).toContain('lay formatting is off');
+    expect(panel()!.textContent).not.toContain('the file on disk');
+    expect(panel()!.querySelectorAll('input')).toHaveLength(0);
+    expect(buttons().map((b) => b.textContent)).toEqual(['×', 'turn on', 'diagnostics']);
+  });
+
+  it('opens the rest out once it is turned on', async () => {
+    await host.run('laymirror.panel');
+    await click('turn on');
+    const shown = panel()!.textContent!;
+    expect(shown).toContain('template');
+    expect(shown).toContain('the file on disk');
   });
 
   it('offers the header fields once a template is loaded', async () => {
     await host.run('laymirror.panel');
+    await click('turn on');
     await click('load…');
     const labels = [...panel()!.querySelectorAll('label span')].map((el) => el.textContent);
     expect(labels).toEqual(['Team Code', 'lay']);
   });
 
-  it('says nothing has been written until something has', async () => {
+  // turning it on before loading a template is the expected first step, not a
+  // failure — the menu has just opened out with the load button in it
+  it('asks for a template rather than reporting a failure', async () => {
     await host.run('laymirror.panel');
+    await click('turn on');
+    expect(host.toasts).toContain('lay formatting on — load a template next');
     expect(panel()!.textContent).toContain('nothing written yet');
   });
 });
@@ -177,8 +195,8 @@ describe('the panel', () => {
 describe('turning it on', () => {
   const turnOn = async () => {
     await host.run('laymirror.panel');
-    await click('load…');
     await click('turn on');
+    await click('load…');
   };
 
   it('puts the school header onto the file straight away', async () => {
@@ -197,9 +215,7 @@ describe('turning it on', () => {
   // loading a template onto a document that is already lay used to change
   // nothing until the next save, which read as the feature not working at all
   it('applies a template loaded after it was turned on', async () => {
-    await host.run('laymirror.panel');
-    await click('turn on');
-    await click('load…');
+    await turnOn();
     expect(readText(unzip(host.disk()), 'word/header1.xml')).toContain('PAGE');
   });
 
@@ -213,6 +229,7 @@ describe('turning it on', () => {
 describe('applying the header', () => {
   it('writes what was typed into the file', async () => {
     await host.run('laymirror.panel');
+    await click('turn on');
     await click('load…');
     const input = panel()!.querySelector('input') as HTMLInputElement;
     input.value = 'WDL 27-28';
@@ -223,6 +240,7 @@ describe('applying the header', () => {
 
   it('remembers it for the next time the panel opens', async () => {
     await host.run('laymirror.panel');
+    await click('turn on');
     await click('load…');
     (panel()!.querySelector('input') as HTMLInputElement).value = 'WDL 27-28';
     await click('apply now');
@@ -235,6 +253,7 @@ describe('applying the header', () => {
 describe('re-reading the template', () => {
   const load = async () => {
     await host.run('laymirror.panel');
+    await click('turn on');
     await click('load…');
   };
 
@@ -280,6 +299,12 @@ describe('re-reading the template', () => {
 describe('between documents and sessions', () => {
   const SECOND = '/Users/x/Documents/2ac.docx';
 
+  const turnOnAndLoad = async () => {
+    await host.run('laymirror.panel');
+    await click('turn on');
+    await click('load…');
+  };
+
   /** cardmirror opening another file: the chip is repainted and the history
    *  gains an entry. */
   const openAnother = () => {
@@ -294,18 +319,17 @@ describe('between documents and sessions', () => {
   };
 
   it('gives a new document the template already in use', async () => {
-    await host.run('laymirror.panel');
-    await click('load…');
+    await turnOnAndLoad();
     await host.run('laymirror.panel');
 
     openAnother();
     await host.run('laymirror.panel');
+    await click('turn on');
     expect(panel()!.textContent).toContain('lay.docx');
   });
 
   it('remembers the template and its path across a restart', async () => {
-    await host.run('laymirror.panel');
-    await click('load…');
+    await turnOnAndLoad();
     await host.run('laymirror.panel');
 
     // the same storage, a fresh module: what a relaunch looks like from here
@@ -318,26 +342,25 @@ describe('between documents and sessions', () => {
     expect(shown).toContain(TEMPLATE_PATH);
   });
 
-  // laymirror rewrites the file it is pointed at, so adopting a document
-  // nobody asked it to touch is the one thing it must not do on its own
   // localStorage.setItem throws over quota and cardmirror's storage bag
   // swallows it, so the template looked loaded until the next launch
   it('says so when the template will not fit in storage', async () => {
     const real = localStorage.setItem.bind(localStorage);
+    await host.run('laymirror.panel');
+    await click('turn on');
     localStorage.setItem = (key: string, value: string) => {
       if (key === 'plugin:laymirror' && value.includes('docx')) return;
       real(key, value);
     };
-    await host.run('laymirror.panel');
     await click('load…');
     localStorage.setItem = real;
     expect(host.toasts.join(' ')).toContain('too large');
   });
 
+  // laymirror rewrites the file it is pointed at, so adopting a document
+  // nobody asked it to touch is the one thing it must not do on its own
   it('does not turn a new document on by itself', async () => {
-    await host.run('laymirror.panel');
-    await click('load…');
-    await click('turn on');
+    await turnOnAndLoad();
     await host.run('laymirror.panel');
 
     openAnother();
