@@ -1,0 +1,48 @@
+# cardmirror installs a plugin from the latest github release's assets and
+# never from the repo tree, so the built bundle has to be attached to one.
+# tag a version and this puts both files where the installer looks.
+name: release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - run: npm ci
+
+      # cardmirror decides an update is available by comparing the manifest
+      # version, not the tag. a manifest left behind means nobody ever gets it
+      - name: check the tag matches the manifest
+        run: |
+          tag="${GITHUB_REF_NAME#v}"
+          manifest="$(node -p "require('./cardmirror-plugin.json').version")"
+          if [ "$tag" != "$manifest" ]; then
+            echo "tag says $tag, cardmirror-plugin.json says $manifest" >&2
+            exit 1
+          fi
+
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run build
+
+      # plugin.js is gitignored — it exists only as a release asset
+      - name: publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" \
+            --title "$GITHUB_REF_NAME" \
+            --generate-notes \
+            cardmirror-plugin.json plugin.js
