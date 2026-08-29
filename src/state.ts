@@ -81,11 +81,14 @@ export function store(api: PluginApi): Store {
   const docs = (): Record<string, unknown> => asRecord(api.storage.get(DOCS));
   const defaults = (): Record<string, unknown> => asRecord(api.storage.get(DEFAULTS));
 
-  const held = (id: string): { name: string; docx: string } | null => {
+  const held = (id: string): { name: string; path: string | null; docx: string } | null => {
     const record = asRecord(templates()[id]);
-    return typeof record['name'] === 'string' && typeof record['docx'] === 'string'
-      ? { name: record['name'], docx: record['docx'] }
-      : null;
+    if (typeof record['name'] !== 'string' || typeof record['docx'] !== 'string') return null;
+    return {
+      name: record['name'],
+      path: typeof record['path'] === 'string' ? record['path'] : null,
+      docx: record['docx'],
+    };
   };
 
   return {
@@ -94,7 +97,7 @@ export function store(api: PluginApi): Store {
       const record = held(id);
       if (!record) return null;
       try {
-        return { id, name: record.name, docx: decode(record.docx) };
+        return { id, name: record.name, path: record.path, docx: decode(record.docx) };
       } catch {
         return null;
       }
@@ -109,7 +112,11 @@ export function store(api: PluginApi): Store {
     addTemplate(template) {
       api.storage.set(TEMPLATES, {
         ...templates(),
-        [template.id]: { name: template.name, docx: encode(template.docx) },
+        [template.id]: {
+          name: template.name,
+          path: template.path,
+          docx: encode(template.docx),
+        },
       });
       api.storage.set(LAST_TEMPLATE, template.id);
     },

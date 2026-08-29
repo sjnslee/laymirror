@@ -15,8 +15,12 @@ const STYLE_ID = 'laymirror-panel-style';
 /** what the last attempt to put the template onto the file did. laymirror
  *  writes a document nobody is looking at — cardmirror shows the editor, not
  *  the file — so without this a working plugin and a broken one look the same. */
+/** whether the template was taken fresh off disk or from the copy laymirror is
+ *  holding. */
+export type Source = 'file' | 'stored';
+
 export type Outcome =
-  | { ok: true; at: number; template: string; fields: number }
+  | { ok: true; at: number; template: string; fields: number; source: Source }
   | { ok: false; why: string };
 
 export interface Action {
@@ -28,6 +32,8 @@ export interface PanelHost {
   on(): boolean;
   /** the loaded template's filename, or null when there is none. */
   templateName(): string | null;
+  /** where that file was picked from, when laymirror knows. */
+  templatePath(): string | null;
   fields(): Field[];
   values(): Values;
   /** why laymirror cannot act right now, if it cannot. */
@@ -207,6 +213,9 @@ export function refresh(): void {
     row('template', button(name ? 'change…' : 'load…', () => void act(() => it.onLoadTemplate()))),
     note(name ?? 'none — laymirror leaves the file alone until one is loaded'),
   );
+  const path = it.templatePath();
+  if (name && path) template.append(note(path));
+  if (name) template.append(note('kept for every document until you change it'));
   body.append(template);
 
   const fields = it.fields();
@@ -226,7 +235,11 @@ export function refresh(): void {
       caption.textContent = field.label;
       const input = document.createElement('input');
       input.type = 'text';
-      input.value = held[field.key] ?? field.label;
+      // empty means "leave whatever the template says", shown greyed out as the
+      // placeholder. putting the template's own words in as a *value* meant
+      // applying wrote them straight back, so an edit made to the template was
+      // overwritten by the text laymirror had been showing
+      input.value = held[field.key] ?? '';
       input.placeholder = field.label;
       // held as typed rather than on apply, so a plain ⌘S writes what is on
       // screen. the panel is deliberately not refreshed here: rebuilding it
@@ -257,6 +270,12 @@ export function refresh(): void {
           `open the file in word to see it.`,
         'lm-done',
       ),
+      note(
+        outcome.source === 'file'
+          ? 're-read from the template file'
+          : 'from the stored copy — cardmirror only reads .docx back from a ' +
+            'path, so load the template again to pick up an edit',
+      ),
     );
   } else {
     done.append(note(outcome.why, 'lm-problem'));
@@ -273,9 +292,13 @@ export function refresh(): void {
 
 /** run an action, then show what it did. the panel is the only feedback
  *  surface laymirror has, so it must not go stale behind an await. */
+/** only the boxes with something in them. an empty box is not a blank header
+ *  line, it is "the template's own text is fine". */
 const typed = (inputs: ReadonlyMap<string, HTMLInputElement>): Values => {
   const values: Values = {};
-  for (const [key, input] of inputs) values[key] = input.value;
+  for (const [key, input] of inputs) {
+    if (input.value !== '') values[key] = input.value;
+  }
   return values;
 };
 

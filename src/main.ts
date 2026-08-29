@@ -32,6 +32,7 @@ import {
   openPanel,
   refresh,
   type Outcome,
+  type Source,
 } from './ui/panel.js';
 
 const ID = 'laymirror';
@@ -93,21 +94,54 @@ function locate(api: PluginApi): Located {
 
 let last: Outcome | null = null;
 
+/** main serves `readFileAtPath` only for `.cmir` and `.docx`, so a `.docm` or
+ *  `.dotx` template — which is most of them — can never be read back from its
+ *  path. those keep working from the stored copy; re-loading the template is
+ *  how they pick up an edit. */
+const REREADABLE = /\.docx$/i;
+
+/** go back to the template file the user picked and take it again, so an edit
+ *  made in word since it was loaded is picked up.
+ *
+ *  false when there is no path, the format cannot be read back, the file has
+ *  moved, or what came back does not parse — in every one of those the stored
+ *  copy is still good, and refusing to apply would be worse than applying the
+ *  version we already had. */
+async function reread(bag: Store, templateId: string): Promise<boolean> {
+  const template = bag.template(templateId);
+  if (!template?.path || !REREADABLE.test(template.path)) return false;
+
+  const file = await readFile(template.path);
+  if (!file) return false;
+
+  const result = read(file.bytes, template.name);
+  if (!result.ok) return false;
+
+  bag.addTemplate({ ...template, docx: file.bytes });
+  blueprints.set(templateId, result.blueprint);
+  return true;
+}
+
 /** put the school's document onto the file on disk.
  *
  *  every failure is recorded and returned rather than swallowed: laymirror
  *  writes a file nobody is looking at, so a silent no-op and a working plugin
  *  are indistinguishable from inside cardmirror. */
-async function apply(api: PluginApi): Promise<Outcome> {
+async function apply(api: PluginApi, fresh = false): Promise<Outcome> {
   const bag = store(api);
   const key = docKey();
   const templateId = templateIdFor(bag, key);
-  const blueprint = blueprintFor(bag, templateId);
 
   if (!key) return record({ ok: false, why: 'no document is open' });
-  if (!templateId || !blueprint) {
-    return record({ ok: false, why: 'no template loaded — load one first' });
-  }
+  if (!templateId) return record({ ok: false, why: 'no template loaded — load one first' });
+
+  // asked for by hand: go back to the file first. a background save does not,
+  // because the template does not change between two keystrokes and an unzip
+  // per save is a cost with nothing to show for it
+  const source: Source = fresh && (await reread(bag, templateId)) ? 'file' : 'stored';
+
+  const blueprint = blueprintFor(bag, templateId);
+  if (!blueprint) return record({ ok: false, why: 'no template loaded — load one first' });
 
   const located = locate(api);
   if ('error' in located) return record({ ok: false, why: located.error });
@@ -132,6 +166,7 @@ async function apply(api: PluginApi): Promise<Outcome> {
       at: Date.now(),
       template: bag.template(templateId)?.name ?? templateId,
       fields: blueprint.fields.length,
+      source,
     });
   } catch (err) {
     return record({ ok: false, why: err instanceof Error ? err.message : String(err) });
@@ -146,8 +181,8 @@ function record(outcome: Outcome): Outcome {
 }
 
 /** apply and say what happened. */
-async function applyAndReport(api: PluginApi, done: string): Promise<boolean> {
-  const outcome = await apply(api);
+async function applyAndReport(api: PluginApi, done: string, fresh = true): Promise<boolean> {
+  const outcome = await apply(api, fresh);
   api.showToast(outcome.ok ? done : `laymirror: ${outcome.why}`);
   return outcome.ok;
 }
@@ -333,7 +368,7 @@ async function loadTemplate(api: PluginApi): Promise<void> {
 
   const bag = store(api);
   const id = `template:${picked.name}`;
-  bag.addTemplate({ id, name: picked.name, docx: picked.bytes });
+  bag.addTemplate({ id, name: picked.name, path: picked.handle ?? null, docx: picked.bytes });
   blueprints.set(id, result.blueprint);
 
   const key = docKey();
@@ -365,6 +400,7 @@ function openLaymirror(api: PluginApi): void {
   openPanel({
     on: () => bag().doc(docKey()).on,
     templateName: () => bag().template(templateIdFor(bag(), docKey()))?.name ?? null,
+    templatePath: () => bag().template(templateIdFor(bag(), docKey()))?.path ?? null,
     fields: () => template()?.fields ?? [],
     values: () => {
       const key = docKey();

@@ -12,13 +12,15 @@
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { makeExport, makeTemplate } from './fixture.js';
 import { stubStorage } from './dom.js';
-import { readText, unzip } from '../src/docx/zip.js';
+import { readText, unzip, writeText, zip } from '../src/docx/zip.js';
 import { encode } from '../src/state.js';
 
 const PATH = '/Users/x/Documents/1ac.docx';
+const TEMPLATE_PATH = '/Users/x/Templates/lay.docx';
 const TEMPLATE = 'template:lay.docx';
 
 let disk: Uint8Array;
+let templateDisk: Uint8Array;
 let mtime: number;
 
 /** what cardmirror's storage holds for a document that was turned on in an
@@ -27,7 +29,9 @@ function seedStorage(): void {
   localStorage.setItem(
     'plugin:laymirror',
     JSON.stringify({
-      templates: { [TEMPLATE]: { name: 'lay.docx', docx: encode(makeTemplate()) } },
+      templates: {
+        [TEMPLATE]: { name: 'lay.docx', path: TEMPLATE_PATH, docx: encode(makeTemplate()) },
+      },
       lastTemplate: TEMPLATE,
       docs: { '1ac.docx': { templateId: TEMPLATE, values: {}, on: true } },
     }),
@@ -40,14 +44,20 @@ beforeEach(async () => {
   stubStorage();
 
   disk = makeExport();
+  templateDisk = makeTemplate();
   mtime = 1;
 
   Object.assign(window as never, {
     __registerCardMirrorPlugin: () => {},
     electronAPI: {
       statFile: async () => ({ mtimeMs: mtime, size: disk.length }),
-      readFileAtPath: async (path: string) =>
-        path === PATH ? { name: '1ac.docx', bytes: disk, handle: PATH, format: 'docx' } : null,
+      readFileAtPath: async (path: string) => {
+        if (path === PATH) return { name: '1ac.docx', bytes: disk, handle: PATH, format: 'docx' };
+        if (path === TEMPLATE_PATH) {
+          return { name: 'lay.docx', bytes: templateDisk, handle: path, format: 'docx' };
+        }
+        return null;
+      },
       writeFileAtPath: async (path: string, bytes: Uint8Array) => {
         if (path === PATH) {
           disk = bytes;
@@ -122,6 +132,26 @@ it('writes the header values held for the document', async () => {
   await settle();
 
   expect(readText(unzip(disk), 'word/header1.xml')).toContain('WDL 27-28');
+});
+
+// an unzip per save buys nothing — the template does not change between two
+// keystrokes — and the save path has to stay cheap. "apply now" is where going
+// back to the file belongs, and it is tested in plugin.test.ts
+it('uses the stored template on a save rather than re-reading it', async () => {
+  await settle();
+
+  const parts = unzip(makeTemplate());
+  writeText(
+    parts,
+    'word/header1.xml',
+    readText(parts, 'word/header1.xml')!.replace('Team ', 'New '),
+  );
+  templateDisk = zip(parts);
+
+  cardmirrorSaves();
+  await settle();
+
+  expect(readText(unzip(disk), 'word/header1.xml')).toContain('Team ');
 });
 
 it('leaves a document that was never turned on alone', async () => {

@@ -9,10 +9,11 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { makeExport, makeTemplate } from './fixture.js';
 import { stubStorage } from './dom.js';
-import { unzip, readText } from '../src/docx/zip.js';
+import { readText, unzip, writeText, zip } from '../src/docx/zip.js';
 import type { Command, PluginDefinition, PluginApi } from '../src/host/plugin-api.js';
 
 const PATH = '/Users/x/Documents/1ac.docx';
+const TEMPLATE_PATH = '/Users/x/Templates/lay.docx';
 
 interface Host {
   definition: PluginDefinition;
@@ -20,6 +21,8 @@ interface Host {
   toasts: string[];
   /** what is currently on disk at PATH. */
   disk: () => Uint8Array;
+  /** rewrite the template file the user picked, as editing it in word would. */
+  editTemplate: (bytes: Uint8Array | null) => void;
   run: (id: string) => Promise<void>;
 }
 
@@ -31,6 +34,7 @@ async function boot(): Promise<Host> {
   stubStorage();
 
   let disk = makeExport();
+  let templateDisk: Uint8Array | null = makeTemplate();
   const toasts: string[] = [];
   let definition: PluginDefinition | null = null;
 
@@ -56,13 +60,23 @@ async function boot(): Promise<Host> {
     __registerCardMirrorPlugin: (def: PluginDefinition) => void (definition = def),
     electronAPI: {
       statFile: async () => ({ mtimeMs: 1, size: disk.length }),
-      readFileAtPath: async (path: string) =>
-        path === PATH ? { name: '1ac.docx', bytes: disk, handle: PATH, format: 'docx' } : null,
+      readFileAtPath: async (path: string) => {
+        if (path === PATH) return { name: '1ac.docx', bytes: disk, handle: PATH, format: 'docx' };
+        // main serves .cmir and .docx only, and only paths the user put in play
+        if (path === TEMPLATE_PATH && templateDisk) {
+          return { name: 'lay.docx', bytes: templateDisk, handle: path, format: 'docx' };
+        }
+        return null;
+      },
       writeFileAtPath: async (path: string, bytes: Uint8Array) => {
         if (path === PATH) disk = bytes;
         return undefined;
       },
-      openFile: async () => ({ name: 'lay.docx', bytes: makeTemplate(), handle: '/x/lay.docx' }),
+      openFile: async () => ({
+        name: 'lay.docx',
+        bytes: templateDisk ?? makeTemplate(),
+        handle: TEMPLATE_PATH,
+      }),
     },
   });
 
@@ -92,6 +106,7 @@ async function boot(): Promise<Host> {
     api,
     toasts,
     disk: () => disk,
+    editTemplate: (bytes) => void (templateDisk = bytes),
     run: async (id) => {
       await commands.get(id)!.run(api);
     },
@@ -215,6 +230,51 @@ describe('applying the header', () => {
     await host.run('laymirror.panel');
     expect((panel()!.querySelector('input') as HTMLInputElement).value).toBe('WDL 27-28');
   });
+});
+
+describe('re-reading the template', () => {
+  const load = async () => {
+    await host.run('laymirror.panel');
+    await click('load…');
+  };
+
+  const header = () => readText(unzip(host.disk()), 'word/header1.xml')!;
+
+  /** the same template with a different word in its header, standing in for
+   *  someone opening it in word and changing the school's name. */
+  const edited = (): Uint8Array => {
+    const parts = unzip(makeTemplate());
+    writeText(
+      parts,
+      'word/header1.xml',
+      readText(parts, 'word/header1.xml')!.replace('Team ', 'New '),
+    );
+    return zip(parts);
+  };
+
+  it('takes the template file again when apply is pressed', async () => {
+    await load();
+    host.editTemplate(edited());
+    await click('apply now');
+    expect(header()).toContain('New ');
+  });
+
+  it('says it went back to the file', async () => {
+    await load();
+    await click('apply now');
+    expect(panel()!.textContent).toContain('re-read from the template file');
+  });
+
+  // a template that moved, or a .docm — which cardmirror will not read back
+  // from a path at all — is not worth losing an apply over
+  it('falls back to the stored copy when the file cannot be read', async () => {
+    await load();
+    host.editTemplate(null);
+    await click('apply now');
+    expect(header()).toContain('Team ');
+    expect(panel()!.textContent).toContain('from the stored copy');
+  });
+
 });
 
 describe('the built bundle', () => {
