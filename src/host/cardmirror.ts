@@ -27,6 +27,15 @@ export const CLASS = {
 
 export const LS = { recents: 'pmd-recent-files' } as const;
 
+/** where the sanctioned api keeps a plugin's storage bag: one localStorage
+ *  entry per plugin holding a plain json object.
+ *
+ *  read directly because cardmirror builds the api object at registration and
+ *  only ever hands it to a command's `run()`. without this, laymirror's save
+ *  watcher could not start until the user invoked a command by hand — and a
+ *  document that was lay yesterday would sit there doing nothing today. */
+export const storageKey = (pluginId: string): string => `plugin:${pluginId}`;
+
 /** cardmirror paints the open document's filename here, and into
  *  `document.title`. these are the only signals that name the current
  *  document when it has no doc id — which is every word-authored .docx. */

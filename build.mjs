@@ -12,8 +12,6 @@ const options = {
   platform: 'browser',
   target: 'chrome120', // electron 42
   sourcemap: false,
-  // docx-preview is apache-2.0 and its licence requires the notice to travel
-  // with the code, so licence comments stay in the bundle
   legalComments: 'inline',
 };
 

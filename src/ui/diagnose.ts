@@ -5,7 +5,7 @@
 // one of them was wrong somewhere. when a command does nothing, this says
 // which lookup returned nothing.
 
-import { currentFilename, DOC_NAME_CHIP, LS } from '../host/cardmirror.js';
+import { currentFilename, DOC_NAME_CHIP, LS, storageKey } from '../host/cardmirror.js';
 import { resolveDocPath } from '../host/paths.js';
 import type { PluginApi } from '../host/plugin-api.js';
 
@@ -23,7 +23,7 @@ const show = (value: unknown): string => {
   return JSON.stringify(value);
 };
 
-async function collect(api: PluginApi): Promise<Line[]> {
+function collect(api: PluginApi): Line[] {
   const lines: Line[] = [];
   const add = (label: string, value: unknown) => lines.push({ label, value: show(value) });
 
@@ -58,21 +58,17 @@ async function collect(api: PluginApi): Promise<Line[]> {
   }
 
   add('api.docInfo()', api.docInfo());
-  const resolved = resolveDocPath(api.docInfo());
-  add('resolveDocPath()', resolved);
+  add('resolveDocPath()', resolveDocPath(api.docInfo()));
 
-  // does the renderer we depend on actually exist in this bundle?
-  try {
-    const docx = await import('docx-preview');
-    add('docx-preview', typeof docx.renderAsync === 'function' ? 'loaded' : 'BROKEN');
-  } catch (err) {
-    add('docx-preview', `FAILED TO LOAD: ${String(err)}`);
-  }
+  // the bag laymirror reads before any command has run, and therefore the one
+  // that decides whether a plain save is picked up at all
+  const bag = localStorage.getItem(storageKey('laymirror'));
+  add('plugin:laymirror', bag === null ? 'empty — nothing turned on yet' : `${bag.length} bytes`);
 
   return lines;
 }
 
-export async function openDiagnostics(api: PluginApi): Promise<void> {
+export function openDiagnostics(api: PluginApi): void {
   document.getElementById(PANEL_ID)?.remove();
 
   const panel = document.createElement('div');
@@ -112,7 +108,7 @@ export async function openDiagnostics(api: PluginApi): Promise<void> {
 
   let text: string;
   try {
-    const lines = await collect(api);
+    const lines = collect(api);
     const width = Math.max(...lines.map((l) => l.label.length));
     text = lines.map((l) => `${l.label.padEnd(width)}  ${l.value}`).join('\n');
   } catch (err) {

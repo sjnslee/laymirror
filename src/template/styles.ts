@@ -216,22 +216,10 @@ export interface StyleInfo {
   name: string;
   kind: 'paragraph' | 'character' | 'table' | 'numbering';
   basedOn: string | null;
-  /** `w:pageBreakBefore` stated by this style itself. null means it said
-   *  nothing, so the answer comes from whatever it is based on. */
-  breakBefore: boolean | null;
 }
 
 const attr = (tag: string, name: string): string | null =>
   new RegExp(`\\b${name}="([^"]*)"`).exec(tag)?.[1] ?? null;
-
-/** a `w:val` of "0" or "false" turns a toggle off; anything else, including
- *  the attribute being absent entirely, turns it on. */
-function toggle(block: string, tag: string): boolean | null {
-  const found = new RegExp(`<${tag}\\b[^>]*/?>`).exec(block);
-  if (!found) return null;
-  const val = attr(found[0], 'w:val');
-  return val !== '0' && val !== 'false';
-}
 
 export function readStyles(stylesXml: string): StyleInfo[] {
   const out: StyleInfo[] = [];
@@ -245,28 +233,9 @@ export function readStyles(stylesXml: string): StyleInfo[] {
       name: /<w:name\b[^>]*w:val="([^"]*)"/.exec(block)?.[1] ?? id,
       kind: (attr(open, 'w:type') ?? 'paragraph') as StyleInfo['kind'],
       basedOn: /<w:basedOn\b[^>]*w:val="([^"]*)"/.exec(block)?.[1] ?? null,
-      breakBefore: toggle(block, 'w:pageBreakBefore'),
     });
   }
   return out;
-}
-
-/** does word start a new page before a paragraph in this style?
- *
- *  a lay template answers yes for heading 1, which is where the page breaks in
- *  a lay file come from — nobody types them. the property inherits down a
- *  `basedOn` chain, so the chain is walked rather than the style read. */
-export function breaksBefore(styles: readonly StyleInfo[], styleId: string): boolean {
-  const byId = new Map(styles.map((style) => [style.id, style]));
-  const seen = new Set<string>();
-
-  let cursor = byId.get(styleId);
-  while (cursor && !seen.has(cursor.id)) {
-    seen.add(cursor.id);
-    if (cursor.breakBefore !== null) return cursor.breakBefore;
-    cursor = cursor.basedOn ? byId.get(cursor.basedOn) : undefined;
-  }
-  return false;
 }
 
 /** cardmirror's own legacy tables say which of a school's styles means what:
@@ -346,19 +315,4 @@ export function deriveStyleMap(styles: readonly StyleInfo[]): Record<string, str
     else if (defined.has(exportId)) map[exportId] = exportId;
   }
   return map;
-}
-
-/** the cardmirror block types the template starts a new page before. this is
- *  what the editor draws a rule above: it is read from the template rather
- *  than remembered, so a school that breaks before hats too gets that for
- *  free. */
-export function breakingTypes(
-  styles: readonly StyleInfo[],
-  styleMap: Record<string, string>,
-): BlockType[] {
-  const out: BlockType[] = [];
-  for (const [exportId, type] of Object.entries(TYPE_BY_EXPORT_STYLE)) {
-    if (breaksBefore(styles, styleMap[exportId] ?? exportId)) out.push(type as BlockType);
-  }
-  return out;
 }

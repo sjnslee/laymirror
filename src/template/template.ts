@@ -11,12 +11,10 @@ import { findFields, type Field } from '../docx/fields.js';
 import { captureSnapshot, type Snapshot } from '../docx/snapshot.js';
 import { isDocx, readText, unzip, type Parts } from '../docx/zip.js';
 import {
-  breakingTypes,
   deriveBareStyles,
   deriveStyleMap,
   readStyles,
   type BareStyles,
-  type BlockType,
   type StyleInfo,
 } from './styles.js';
 
@@ -41,8 +39,6 @@ export interface Blueprint {
   bareStyles: BareStyles;
   /** the header and footer text the user may replace. */
   fields: Field[];
-  /** the block types word starts a new page before. */
-  breaks: BlockType[];
 }
 
 export type ReadResult = { ok: true; blueprint: Blueprint } | { ok: false; error: string };
@@ -82,7 +78,6 @@ export function read(bytes: Uint8Array, name: string): ReadResult {
       styleMap,
       bareStyles: deriveBareStyles(styles),
       fields: findFields(headerParts(snapshot)),
-      breaks: breakingTypes(styles, styleMap),
     },
   };
 }

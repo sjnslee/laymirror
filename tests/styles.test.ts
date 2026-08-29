@@ -1,7 +1,5 @@
 import { describe, expect, it } from 'vitest';
 import {
-  breakingTypes,
-  breaksBefore,
   deriveBareStyles,
   deriveStyleMap,
   LEGACY_BY_NAME,
@@ -16,7 +14,6 @@ const style = (over: Partial<StyleInfo> & { id: string }): StyleInfo => ({
   name: over.id,
   kind: 'paragraph',
   basedOn: null,
-  breakBefore: null,
   ...over,
 });
 
@@ -27,7 +24,6 @@ describe('round-trip vocabulary', () => {
     expect(LEGACY_BY_NAME['card']).toBe('body');
     expect(LEGACY_BY_NAME['underline']).toBe('char-underline');
   });
-
 
   it('keeps cite and underline marks only on the native path', () => {
     expect(NATIVE_MARK_BY_ID['Style13ptBold']).toBe('cite_mark');
@@ -50,7 +46,7 @@ describe('native-path detection', () => {
 });
 
 describe('readStyles', () => {
-  it('reads id, name, kind, inheritance and the page break', () => {
+  it('reads id, name, kind and inheritance', () => {
     const styles = readStyles(
       '<w:styles>' +
         '<w:style w:type="paragraph" w:styleId="Heading1"><w:name w:val="heading 1"/>' +
@@ -65,14 +61,12 @@ describe('readStyles', () => {
         name: 'heading 1',
         kind: 'paragraph',
         basedOn: null,
-        breakBefore: true,
       },
       {
         id: 'Underline',
         name: 'Underline',
         kind: 'character',
         basedOn: 'Normal',
-        breakBefore: null,
       },
     ]);
   });
@@ -81,50 +75,6 @@ describe('readStyles', () => {
     expect(readStyles('<w:styles><w:style w:styleId="Bare"></w:style></w:styles>')[0]!.name).toBe(
       'Bare',
     );
-  });
-});
-
-describe('breaksBefore', () => {
-  it('is false for a style that says nothing', () => {
-    expect(breaksBefore([style({ id: 'Normal' })], 'Normal')).toBe(false);
-  });
-
-  it('inherits down a basedOn chain', () => {
-    const styles = [
-      style({ id: 'Pocket', breakBefore: true }),
-      style({ id: 'BigPocket', basedOn: 'Pocket' }),
-    ];
-    expect(breaksBefore(styles, 'BigPocket')).toBe(true);
-  });
-
-  // `w:val="0"` turns the toggle off, and a style that switched its parent's
-  // break off must not be reported as breaking
-  it('honours a style that turns its parent off', () => {
-    const styles = [
-      style({ id: 'Pocket', breakBefore: true }),
-      style({ id: 'Quiet', basedOn: 'Pocket', breakBefore: false }),
-    ];
-    expect(breaksBefore(styles, 'Quiet')).toBe(false);
-  });
-
-  it('survives a chain that points at itself', () => {
-    expect(breaksBefore([style({ id: 'Loop', basedOn: 'Loop' })], 'Loop')).toBe(false);
-  });
-});
-
-describe('breakingTypes', () => {
-  // this is what the editor draws a rule above
-  it('names the block types the template starts a page before', () => {
-    const styles = [
-      style({ id: 'Heading1', name: 'heading 1', breakBefore: true }),
-      style({ id: 'Heading2', name: 'heading 2' }),
-    ];
-    expect(breakingTypes(styles, deriveStyleMap(styles))).toEqual(['pocket']);
-  });
-
-  it('follows the mapping, not the export id', () => {
-    const styles = [style({ id: 'Tag', name: 'Tag', breakBefore: true })];
-    expect(breakingTypes(styles, { Heading4: 'Tag' })).toEqual(['tag']);
   });
 });
 

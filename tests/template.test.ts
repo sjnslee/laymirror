@@ -28,12 +28,6 @@ describe('read', () => {
     expect(ok().bareStyles.card_body).toBe('card');
   });
 
-  // the fixture breaks before heading 1 and nothing else, exactly as a lay
-  // template does
-  it('reports where the template breaks its pages', () => {
-    expect(ok().breaks).toEqual(['pocket']);
-  });
-
   it('finds the header fields', () => {
     expect(ok().fields.map((field) => field.label)).toEqual(['Team Code', 'lay']);
   });
