@@ -57,6 +57,12 @@ this one is session-only: cardmirror forgets it on restart.
 every save rewrites the file on disk with the template's styles, fonts, theme,
 numbering, page size, margins and header, and the header text you typed.
 
+the fields laymirror offers are the ones the template marks. wrap a placeholder
+in a zero-width space (`U+200B`) in word and it becomes editable; everything
+outside the marks is the school's and is left alone. a template that marks
+nothing falls back to offering each stretch of plain text between tabs and page
+fields.
+
 cardmirror keeps showing its own formatting — it has no header and no page
 view. open the file in word to see the result.
 
