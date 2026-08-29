@@ -14,8 +14,8 @@ jobs:
   release:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
         with:
           node-version: '22'
           cache: npm
@@ -33,9 +33,11 @@ jobs:
             exit 1
           fi
 
+      # build before test: one of the tests reads plugin.js to check esbuild
+      # still emits a self-contained classic script
       - run: npm run typecheck
-      - run: npm test
       - run: npm run build
+      - run: npm test
 
       # plugin.js is gitignored — it exists only as a release asset
       - name: publish
