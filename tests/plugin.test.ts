@@ -277,6 +277,75 @@ describe('re-reading the template', () => {
 
 });
 
+describe('between documents and sessions', () => {
+  const SECOND = '/Users/x/Documents/2ac.docx';
+
+  /** cardmirror opening another file: the chip is repainted and the history
+   *  gains an entry. */
+  const openAnother = () => {
+    document.getElementById('doc-name-chip-text')!.textContent = '2ac.docx';
+    localStorage.setItem(
+      'pmd-recent-files',
+      JSON.stringify([
+        { handle: SECOND, filename: '2ac.docx', format: 'docx', lastOpenedAt: 3 },
+        { handle: PATH, filename: '1ac.docx', format: 'docx', lastOpenedAt: 2 },
+      ]),
+    );
+  };
+
+  it('gives a new document the template already in use', async () => {
+    await host.run('laymirror.panel');
+    await click('load…');
+    await host.run('laymirror.panel');
+
+    openAnother();
+    await host.run('laymirror.panel');
+    expect(panel()!.textContent).toContain('lay.docx');
+  });
+
+  it('remembers the template and its path across a restart', async () => {
+    await host.run('laymirror.panel');
+    await click('load…');
+    await host.run('laymirror.panel');
+
+    // the same storage, a fresh module: what a relaunch looks like from here
+    vi.resetModules();
+    await import('../src/main.js');
+    await host.run('laymirror.panel');
+
+    const shown = panel()!.textContent!;
+    expect(shown).toContain('lay.docx');
+    expect(shown).toContain(TEMPLATE_PATH);
+  });
+
+  // laymirror rewrites the file it is pointed at, so adopting a document
+  // nobody asked it to touch is the one thing it must not do on its own
+  // localStorage.setItem throws over quota and cardmirror's storage bag
+  // swallows it, so the template looked loaded until the next launch
+  it('says so when the template will not fit in storage', async () => {
+    const real = localStorage.setItem.bind(localStorage);
+    localStorage.setItem = (key: string, value: string) => {
+      if (key === 'plugin:laymirror' && value.includes('docx')) return;
+      real(key, value);
+    };
+    await host.run('laymirror.panel');
+    await click('load…');
+    localStorage.setItem = real;
+    expect(host.toasts.join(' ')).toContain('too large');
+  });
+
+  it('does not turn a new document on by itself', async () => {
+    await host.run('laymirror.panel');
+    await click('load…');
+    await click('turn on');
+    await host.run('laymirror.panel');
+
+    openAnother();
+    await host.run('laymirror.panel');
+    expect(panel()!.textContent).toContain('lay formatting is off');
+  });
+});
+
 describe('the built bundle', () => {
   // esbuild has to produce one self-contained classic script, because that is
   // all cardmirror will run

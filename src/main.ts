@@ -369,6 +369,14 @@ async function loadTemplate(api: PluginApi): Promise<void> {
   const bag = store(api);
   const id = `template:${picked.name}`;
   bag.addTemplate({ id, name: picked.name, path: picked.handle ?? null, docx: picked.bytes });
+
+  // cardmirror's storage bag swallows a failed localStorage write, so a
+  // template too big for the quota looks loaded until the next launch, when it
+  // is simply gone. read it back rather than trust the write
+  if (!bag.template(id)) {
+    api.showToast(`${picked.name} is too large for cardmirror to keep — laymirror needs a smaller template`);
+    return;
+  }
   blueprints.set(id, result.blueprint);
 
   const key = docKey();
