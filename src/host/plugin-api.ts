@@ -1,6 +1,8 @@
 // cardmirror's sanctioned plugin surface (api v1). shapes read off the
 // shipped renderer bundle's registration validator.
 
+import { storageKey } from './cardmirror.js';
+
 export interface DocInfo {
   docId: string;
   docTitle: string;
@@ -41,6 +43,44 @@ export interface PluginDefinition {
 }
 
 type Register = (def: PluginDefinition) => void;
+
+/** the same api, minus the parts only cardmirror can provide.
+ *
+ *  the real object is built at registration and handed only to a command's
+ *  `run()`, so this stands in until one runs: it reads and writes the identical
+ *  storage bag, and its toast goes to the console because there is no reaching
+ *  cardmirror's. a document is watched from the moment laymirror loads, and the
+ *  first command upgrades the session to the real thing. */
+export function bootApi(pluginId: string): PluginApi {
+  const key = storageKey(pluginId);
+  const bag = (): Record<string, unknown> => {
+    try {
+      const held: unknown = JSON.parse(localStorage.getItem(key) || '{}');
+      return held && typeof held === 'object' ? (held as Record<string, unknown>) : {};
+    } catch {
+      return {};
+    }
+  };
+
+  return {
+    appVersion: 'unknown',
+    docInfo: () => null,
+    showToast: (message) => console.log(`[laymirror] ${message}`),
+    storage: {
+      get: (name) => bag()[name],
+      set: (name, value) => {
+        const next = { ...bag(), [name]: value };
+        try {
+          localStorage.setItem(key, JSON.stringify(next));
+        } catch {
+          // a storage bag that will not write is the template being too large;
+          // the caller's cap is what reports that
+        }
+      },
+    },
+    settings: { get: () => undefined, onChanged: () => () => {} },
+  };
+}
 
 export function register(def: PluginDefinition): boolean {
   const w = window as unknown as { __registerCardMirrorPlugin?: Register };

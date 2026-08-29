@@ -32,14 +32,23 @@ async function boot(): Promise<Host> {
 
   let disk = makeExport();
   const toasts: string[] = [];
-  const bag: Record<string, unknown> = {};
   let definition: PluginDefinition | null = null;
+
+  // cardmirror's own storage is one localStorage entry per plugin, and
+  // laymirror reads it directly to start watching before any command has run.
+  // an in-memory bag here would hide that half of the plugin from every test.
+  const bag = (): Record<string, unknown> =>
+    JSON.parse(localStorage.getItem('plugin:laymirror') || '{}');
 
   const api = {
     appVersion: '1.3.0',
     docInfo: () => null,
     showToast: (message: string) => void toasts.push(message),
-    storage: { get: (key: string) => bag[key], set: (k: string, v: unknown) => void (bag[k] = v) },
+    storage: {
+      get: (key: string) => bag()[key],
+      set: (key: string, value: unknown) =>
+        localStorage.setItem('plugin:laymirror', JSON.stringify({ ...bag(), [key]: value })),
+    },
     settings: { get: () => undefined, onChanged: () => () => {} },
   } as unknown as PluginApi;
 
@@ -144,10 +153,9 @@ describe('the panel', () => {
     expect(labels).toEqual(['Team Code', 'lay']);
   });
 
-  it('says where the template breaks its pages', async () => {
+  it('says nothing has been written until something has', async () => {
     await host.run('laymirror.panel');
-    await click('load…');
-    expect(panel()!.textContent).toContain('new page before every pocket');
+    expect(panel()!.textContent).toContain('nothing written yet');
   });
 });
 
@@ -163,17 +171,27 @@ describe('turning it on', () => {
     expect(readText(unzip(host.disk()), 'word/header1.xml')).toContain('PAGE');
   });
 
-  it('draws a rule above every block the template breaks before', async () => {
+  it('carries the template styles, theme and page setup too', async () => {
     await turnOn();
-    const sheet = document.getElementById('laymirror-break-rules')!;
-    expect(sheet.textContent).toContain('h1.pmd-pocket');
+    const parts = unzip(host.disk());
+    expect(readText(parts, 'word/styles.xml')).toContain('w:styleId="Tag"');
+    expect(readText(parts, 'word/theme/theme1.xml')).not.toBeNull();
+    expect(readText(parts, 'word/document.xml')).toContain('headerReference');
+  });
+
+  // loading a template onto a document that is already lay used to change
+  // nothing until the next save, which read as the feature not working at all
+  it('applies a template loaded after it was turned on', async () => {
+    await host.run('laymirror.panel');
+    await click('turn on');
+    await click('load…');
+    expect(readText(unzip(host.disk()), 'word/header1.xml')).toContain('PAGE');
   });
 
   it('turns back off and leaves the file alone', async () => {
     await turnOn();
     await click('turn off');
     expect(host.toasts).toContain('lay formatting off');
-    expect(document.getElementById('laymirror-break-rules')).toBeNull();
   });
 });
 
@@ -183,7 +201,8 @@ describe('applying the header', () => {
     await click('load…');
     const input = panel()!.querySelector('input') as HTMLInputElement;
     input.value = 'WDL 27-28';
-    await click('apply');
+    input.dispatchEvent(new Event('input'));
+    await click('apply now');
     expect(readText(unzip(host.disk()), 'word/header1.xml')).toContain('WDL 27-28');
   });
 
@@ -191,7 +210,7 @@ describe('applying the header', () => {
     await host.run('laymirror.panel');
     await click('load…');
     (panel()!.querySelector('input') as HTMLInputElement).value = 'WDL 27-28';
-    await click('apply');
+    await click('apply now');
     await host.run('laymirror.panel');
     await host.run('laymirror.panel');
     expect((panel()!.querySelector('input') as HTMLInputElement).value).toBe('WDL 27-28');

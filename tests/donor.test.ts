@@ -29,11 +29,6 @@ suite('a real school template', () => {
     expect(read(readFileSync(DONOR), 'lay-template.docm').ok).toBe(true);
   });
 
-  // this is where a lay file's page breaks come from — nobody types them
-  it('breaks a page before the top-level headings', () => {
-    expect(blueprint().breaks).toContain('pocket');
-  });
-
   it('offers the header text a squad actually changes', () => {
     const labels = blueprint().fields.map((field) => field.label);
     expect(labels.length).toBeGreaterThan(0);

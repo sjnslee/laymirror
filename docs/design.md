@@ -15,6 +15,11 @@ api is small — `docInfo()`, `showToast()`, a json storage bag, declared
 settings, and commands with default key chords. it cannot touch the document,
 cannot hook a save, cannot add a ribbon button and cannot add a settings page.
 
+it is also only ever handed to a command's `run()`. cardmirror builds the object
+at registration and keeps it, so a plugin that waits to be given one does
+nothing at all in a session where the user opens a file and presses save — which
+is every session.
+
 everything else laymirror needs comes from the renderer it is running inside,
 and is kept in `src/host/`:
 
@@ -23,6 +28,7 @@ and is kept in `src/host/`:
 | the open document's path | `pmd-recent-files` in localStorage, matched against the filename chip | `docInfo()` is null until cardmirror mints a doc id, which a word-authored `.docx` never has |
 | reading and writing the file | `window.electronAPI` | there is no file access in the plugin api |
 | knowing a save happened | polling `statFile` | there is no save hook |
+| the storage bag, before any command has run | `localStorage['plugin:laymirror']` | the api object arrives too late to start watching with |
 
 `readFileAtPath` is scoped by the main process and serves only `.cmir` and
 `.docx`, so a template arrives through `openFile` — the os picker — which reads
@@ -97,7 +103,7 @@ emptied rather than removed, because the run carries the small caps.
 discovery always runs against the pristine template, so a field keeps its
 identity after its value has been replaced, and a value can be typed over.
 
-## page breaks
+## page breaks are the template's job, not laymirror's
 
 cardmirror's model cannot hold one. its importer turns `<w:br w:type="page"/>`
 into a bare `\n` inside a text node and its exporter writes every `\n` back as
@@ -106,33 +112,37 @@ into a bare `\n` inside a text node and its exporter writes every `\n` back as
 
 what survives is the **style**. a lay template says `w:pageBreakBefore` on
 heading 1, so every pocket starts a page — and because it is a property of the
-style, it travels inside the `styles.xml` laymirror carries and word and
-docx-preview both honour it. nobody types a page break in a lay file; the
-template does it.
+style, it travels inside the `styles.xml` laymirror carries, and word honours
+it. nobody types a page break in a lay file; the template does it, and laymirror
+does nothing beyond carrying the style that says so.
 
-so the editor draws two things:
+an earlier round drew those breaks in the editor as css rules and a form-feed
+overlay. it went: the rules landed in the wrong places, and a mark in an editor
+that is not paginated tells you nothing a printed page does not tell you
+better.
 
-- a css rule above every block type whose mapped style breaks before it, read
-  out of the template rather than remembered. free, and it never fights
-  prosemirror for the dom.
-- an overlay line wherever the text itself carries a literal form feed — a
-  document that came from somewhere else. a css rule cannot select one
-  character, so those are measured with ranges and drawn in a layer above the
-  editor. nothing is observed until such a character actually turns up.
+## no page view
 
-## page view and print
+an earlier round rendered the package with `docx-preview` and called it page
+view. it got the header, the right-aligned `w:ptab` and the page numbers wrong,
+because it is a style renderer and not word. it went.
 
-`docx-preview` renders the real package — the school's `styles.xml`, theme,
-header and footer, at the template's real page size and margins — and chromium
-lays it out. pages break where word said they broke
-(`w:lastRenderedPageBreak`), or where the document breaks itself, or, only when
-neither exists, where a fill pass over the rendered layout puts them. the bar
-says which.
+there is no "open in word" in its place either: cardmirror's `openExternal`
+accepts `http(s)` and `mailto` and refuses everything else, and the only
+`shell.openPath` calls in its main process take fixed directories. no ipc
+channel hands an arbitrary path to the os. to see the file, open it in word.
 
-this is also the print pipeline. a plugin cannot hand a file to word:
-cardmirror's `openExternal` accepts `http(s)` and `mailto` and refuses
-everything else, so there is no `ms-word:` or `file://` escape. electron's print
-dialog carries "save as pdf", which is the pdf export as well.
+## saying what happened
+
+none of laymirror's work shows up in cardmirror. the editor keeps its own
+formatting; the header, the fonts and the page setup are on the file, and the
+file is not what is on screen. so a working plugin and a broken one look
+identical from inside the app, and every failure that returned silently read as
+the feature not existing.
+
+so: the panel says what the last write did and when, a failed write toasts with
+the reason, and the header values are held as they are typed rather than on
+pressing apply, so a plain ⌘S writes what is on screen.
 
 ## what breaks when cardmirror changes
 
@@ -140,8 +150,9 @@ every undocumented internal is in `src/host/cardmirror.ts` and
 `src/template/styles.ts`, stamped with the version it was read against (1.3.0),
 so an upgrade breaks a test rather than a round.
 
-the sharpest edges: the block classes (`h1.pmd-pocket` and friends) come from
-cardmirror's schema `toDOM`; the export style ids (`Heading4` for a tag,
+the sharpest edges: the export style ids (`Heading4` for a tag,
 `Style13ptBold` for a cite mark) come from its exporter; the native/legacy
 import split — which decides whether a style comes back as a tag or as an
-ordinary paragraph — comes from its parse worker.
+ordinary paragraph — comes from its parse worker; `pmd-recent-files` and
+`#doc-name-chip-text` are how a filename becomes a path; and
+`plugin:<id>` is where the storage bag lives.
