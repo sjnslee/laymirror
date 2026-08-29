@@ -6,25 +6,6 @@
 // verified by reading the shipped build (/Applications/cardmirror.app,
 // app.asar) and by the phase 0 spike run against a live editor.
 
-/** the editor container. `#editor` observed in the spike; the pane class
- *  is the multi-pane form. */
-export const EDITOR_SELECTOR = '#editor, .pmd-pane-editor';
-
-/** the class on each block type's element, from cardmirror's own schema —
- *  `pocket` renders as `h1.pmd-pocket`, `hat` as `h2.pmd-hat`, and so on.
- *  read off the shipped 1.3.0 schema's `toDOM`. */
-export const CLASS = {
-  pocket: 'pmd-pocket',
-  hat: 'pmd-hat',
-  block: 'pmd-block',
-  tag: 'pmd-tag',
-  cardBody: 'pmd-card-body',
-  citePara: 'pmd-cite-para',
-  undertag: 'pmd-undertag',
-  analytic: 'pmd-analytic',
-  card: 'pmd-card',
-} as const;
-
 export const LS = { recents: 'pmd-recent-files' } as const;
 
 /** where the sanctioned api keeps a plugin's storage bag: one localStorage
