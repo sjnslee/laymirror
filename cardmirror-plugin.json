@@ -3,7 +3,8 @@
   "name": "laymirror",
   "version": "0.1.0",
   "apiVersion": 1,
-  "description": "lay debate documents \u2014 the school's template, header and pages, put back on every save",
+  "description": "lay debate documents — the school's template and header, put back on every save",
+  "author": "sjnslee",
   "license": "PolyForm-Noncommercial-1.0.0",
   "minAppVersion": "1.3.0"
 }
