@@ -9,10 +9,11 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { makeExport, makeTemplate } from './fixture.js';
 import { stubStorage } from './dom.js';
-import { unzip, readText } from '../src/docx/zip.js';
+import { readText, unzip, writeText, zip } from '../src/docx/zip.js';
 import type { Command, PluginDefinition, PluginApi } from '../src/host/plugin-api.js';
 
 const PATH = '/Users/x/Documents/1ac.docx';
+const TEMPLATE_PATH = '/Users/x/Templates/lay.docx';
 
 interface Host {
   definition: PluginDefinition;
@@ -20,6 +21,8 @@ interface Host {
   toasts: string[];
   /** what is currently on disk at PATH. */
   disk: () => Uint8Array;
+  /** rewrite the template file the user picked, as editing it in word would. */
+  editTemplate: (bytes: Uint8Array | null) => void;
   run: (id: string) => Promise<void>;
 }
 
@@ -31,6 +34,7 @@ async function boot(): Promise<Host> {
   stubStorage();
 
   let disk = makeExport();
+  let templateDisk: Uint8Array | null = makeTemplate();
   const toasts: string[] = [];
   let definition: PluginDefinition | null = null;
 
@@ -56,13 +60,23 @@ async function boot(): Promise<Host> {
     __registerCardMirrorPlugin: (def: PluginDefinition) => void (definition = def),
     electronAPI: {
       statFile: async () => ({ mtimeMs: 1, size: disk.length }),
-      readFileAtPath: async (path: string) =>
-        path === PATH ? { name: '1ac.docx', bytes: disk, handle: PATH, format: 'docx' } : null,
+      readFileAtPath: async (path: string) => {
+        if (path === PATH) return { name: '1ac.docx', bytes: disk, handle: PATH, format: 'docx' };
+        // main serves .cmir and .docx only, and only paths the user put in play
+        if (path === TEMPLATE_PATH && templateDisk) {
+          return { name: 'lay.docx', bytes: templateDisk, handle: path, format: 'docx' };
+        }
+        return null;
+      },
       writeFileAtPath: async (path: string, bytes: Uint8Array) => {
         if (path === PATH) disk = bytes;
         return undefined;
       },
-      openFile: async () => ({ name: 'lay.docx', bytes: makeTemplate(), handle: '/x/lay.docx' }),
+      openFile: async () => ({
+        name: 'lay.docx',
+        bytes: templateDisk ?? makeTemplate(),
+        handle: TEMPLATE_PATH,
+      }),
     },
   });
 
@@ -92,6 +106,7 @@ async function boot(): Promise<Host> {
     api,
     toasts,
     disk: () => disk,
+    editTemplate: (bytes) => void (templateDisk = bytes),
     run: async (id) => {
       await commands.get(id)!.run(api);
     },
@@ -141,20 +156,38 @@ describe('the panel', () => {
     expect(panel()).toBeNull();
   });
 
-  it('says there is no template until one is loaded', async () => {
+  // a document laymirror is not touching has no template, no header and
+  // nothing written to it, and showing all three reads as if it did
+  it('shows only the switch while lay formatting is off', async () => {
     await host.run('laymirror.panel');
-    expect(panel()!.textContent).toContain('none');
+    expect(panel()!.textContent).toContain('lay formatting is off');
+    expect(panel()!.textContent).not.toContain('the file on disk');
+    expect(panel()!.querySelectorAll('input')).toHaveLength(0);
+    expect(buttons().map((b) => b.textContent)).toEqual(['×', 'turn on', 'diagnostics']);
+  });
+
+  it('opens the rest out once it is turned on', async () => {
+    await host.run('laymirror.panel');
+    await click('turn on');
+    const shown = panel()!.textContent!;
+    expect(shown).toContain('template');
+    expect(shown).toContain('the file on disk');
   });
 
   it('offers the header fields once a template is loaded', async () => {
     await host.run('laymirror.panel');
+    await click('turn on');
     await click('load…');
     const labels = [...panel()!.querySelectorAll('label span')].map((el) => el.textContent);
     expect(labels).toEqual(['Team Code', 'lay']);
   });
 
-  it('says nothing has been written until something has', async () => {
+  // turning it on before loading a template is the expected first step, not a
+  // failure — the menu has just opened out with the load button in it
+  it('asks for a template rather than reporting a failure', async () => {
     await host.run('laymirror.panel');
+    await click('turn on');
+    expect(host.toasts).toContain('lay formatting on — load a template next');
     expect(panel()!.textContent).toContain('nothing written yet');
   });
 });
@@ -162,8 +195,8 @@ describe('the panel', () => {
 describe('turning it on', () => {
   const turnOn = async () => {
     await host.run('laymirror.panel');
-    await click('load…');
     await click('turn on');
+    await click('load…');
   };
 
   it('puts the school header onto the file straight away', async () => {
@@ -182,9 +215,7 @@ describe('turning it on', () => {
   // loading a template onto a document that is already lay used to change
   // nothing until the next save, which read as the feature not working at all
   it('applies a template loaded after it was turned on', async () => {
-    await host.run('laymirror.panel');
-    await click('turn on');
-    await click('load…');
+    await turnOn();
     expect(readText(unzip(host.disk()), 'word/header1.xml')).toContain('PAGE');
   });
 
@@ -198,6 +229,7 @@ describe('turning it on', () => {
 describe('applying the header', () => {
   it('writes what was typed into the file', async () => {
     await host.run('laymirror.panel');
+    await click('turn on');
     await click('load…');
     const input = panel()!.querySelector('input') as HTMLInputElement;
     input.value = 'WDL 27-28';
@@ -208,12 +240,132 @@ describe('applying the header', () => {
 
   it('remembers it for the next time the panel opens', async () => {
     await host.run('laymirror.panel');
+    await click('turn on');
     await click('load…');
     (panel()!.querySelector('input') as HTMLInputElement).value = 'WDL 27-28';
     await click('apply now');
     await host.run('laymirror.panel');
     await host.run('laymirror.panel');
     expect((panel()!.querySelector('input') as HTMLInputElement).value).toBe('WDL 27-28');
+  });
+});
+
+describe('re-reading the template', () => {
+  const load = async () => {
+    await host.run('laymirror.panel');
+    await click('turn on');
+    await click('load…');
+  };
+
+  const header = () => readText(unzip(host.disk()), 'word/header1.xml')!;
+
+  /** the same template with a different word in its header, standing in for
+   *  someone opening it in word and changing the school's name. */
+  const edited = (): Uint8Array => {
+    const parts = unzip(makeTemplate());
+    writeText(
+      parts,
+      'word/header1.xml',
+      readText(parts, 'word/header1.xml')!.replace('Team ', 'New '),
+    );
+    return zip(parts);
+  };
+
+  it('takes the template file again when apply is pressed', async () => {
+    await load();
+    host.editTemplate(edited());
+    await click('apply now');
+    expect(header()).toContain('New ');
+  });
+
+  it('says it went back to the file', async () => {
+    await load();
+    await click('apply now');
+    expect(panel()!.textContent).toContain('re-read from the template file');
+  });
+
+  // a template that moved, or a .docm — which cardmirror will not read back
+  // from a path at all — is not worth losing an apply over
+  it('falls back to the stored copy when the file cannot be read', async () => {
+    await load();
+    host.editTemplate(null);
+    await click('apply now');
+    expect(header()).toContain('Team ');
+    expect(panel()!.textContent).toContain('from the stored copy');
+  });
+
+});
+
+describe('between documents and sessions', () => {
+  const SECOND = '/Users/x/Documents/2ac.docx';
+
+  const turnOnAndLoad = async () => {
+    await host.run('laymirror.panel');
+    await click('turn on');
+    await click('load…');
+  };
+
+  /** cardmirror opening another file: the chip is repainted and the history
+   *  gains an entry. */
+  const openAnother = () => {
+    document.getElementById('doc-name-chip-text')!.textContent = '2ac.docx';
+    localStorage.setItem(
+      'pmd-recent-files',
+      JSON.stringify([
+        { handle: SECOND, filename: '2ac.docx', format: 'docx', lastOpenedAt: 3 },
+        { handle: PATH, filename: '1ac.docx', format: 'docx', lastOpenedAt: 2 },
+      ]),
+    );
+  };
+
+  it('gives a new document the template already in use', async () => {
+    await turnOnAndLoad();
+    await host.run('laymirror.panel');
+
+    openAnother();
+    await host.run('laymirror.panel');
+    await click('turn on');
+    expect(panel()!.textContent).toContain('lay.docx');
+  });
+
+  it('remembers the template and its path across a restart', async () => {
+    await turnOnAndLoad();
+    await host.run('laymirror.panel');
+
+    // the same storage, a fresh module: what a relaunch looks like from here
+    vi.resetModules();
+    await import('../src/main.js');
+    await host.run('laymirror.panel');
+
+    const shown = panel()!.textContent!;
+    expect(shown).toContain('lay.docx');
+    expect(shown).toContain(TEMPLATE_PATH);
+  });
+
+  // localStorage.setItem throws over quota and cardmirror's storage bag
+  // swallows it, so the template looked loaded until the next launch
+  it('says so when the template will not fit in storage', async () => {
+    const real = localStorage.setItem.bind(localStorage);
+    await host.run('laymirror.panel');
+    await click('turn on');
+    localStorage.setItem = (key: string, value: string) => {
+      if (key === 'plugin:laymirror' && value.includes('docx')) return;
+      real(key, value);
+    };
+    await click('load…');
+    localStorage.setItem = real;
+    expect(host.toasts.join(' ')).toContain('too large');
+  });
+
+  // laymirror rewrites the file it is pointed at, so adopting a document
+  // nobody asked it to touch is the one thing it must not do on its own
+  it('does not turn a new document on by itself', async () => {
+    await turnOnAndLoad();
+    await host.run('laymirror.panel');
+
+    openAnother();
+    await host.run('laymirror.panel');
+    expect(panel()!.textContent).toContain('lay formatting is off');
   });
 });
 

@@ -24,6 +24,9 @@ export interface Template {
   /** one per file, so two schools' templates cannot collide. */
   id: string;
   name: string;
+  /** where the user picked it from, so an apply can go back and re-read it.
+   *  null when it was loaded before laymirror kept paths. */
+  path: string | null;
   docx: Uint8Array;
 }
 

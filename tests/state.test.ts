@@ -40,21 +40,21 @@ describe('base64', () => {
 describe('templates', () => {
   it('keeps a library rather than one slot', () => {
     const bag = store(api);
-    bag.addTemplate({ id: 'template:a.docx', name: 'a.docx', docx: docx(1) });
-    bag.addTemplate({ id: 'template:b.docx', name: 'b.docx', docx: docx(2) });
+    bag.addTemplate({ id: 'template:a.docx', path: null, name: 'a.docx', docx: docx(1) });
+    bag.addTemplate({ id: 'template:b.docx', path: null, name: 'b.docx', docx: docx(2) });
     expect(bag.templates().map((t) => t.id)).toEqual(['template:a.docx', 'template:b.docx']);
   });
 
   it('gives the bytes back unchanged', () => {
     const bag = store(api);
-    bag.addTemplate({ id: 'a', name: 'a.docx', docx: docx(9) });
+    bag.addTemplate({ id: 'a', path: null, name: 'a.docx', docx: docx(9) });
     expect(bag.template('a')!.docx).toEqual(docx(9));
   });
 
   it('remembers the one used last', () => {
     const bag = store(api);
-    bag.addTemplate({ id: 'a', name: 'a.docx', docx: docx(1) });
-    bag.addTemplate({ id: 'b', name: 'b.docx', docx: docx(2) });
+    bag.addTemplate({ id: 'a', path: null, name: 'a.docx', docx: docx(1) });
+    bag.addTemplate({ id: 'b', path: null, name: 'b.docx', docx: docx(2) });
     expect(bag.lastTemplateId()).toBe('b');
   });
 
