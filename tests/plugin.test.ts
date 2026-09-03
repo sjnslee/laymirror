@@ -45,7 +45,6 @@ async function boot(): Promise<Host> {
     JSON.parse(localStorage.getItem('plugin:laymirror') || '{}');
 
   const api = {
-    appVersion: '1.3.0',
     docInfo: () => null,
     showToast: (message: string) => void toasts.push(message),
     storage: {
@@ -53,7 +52,6 @@ async function boot(): Promise<Host> {
       set: (key: string, value: unknown) =>
         localStorage.setItem('plugin:laymirror', JSON.stringify({ ...bag(), [key]: value })),
     },
-    settings: { get: () => undefined, onChanged: () => () => {} },
   } as unknown as PluginApi;
 
   Object.assign(window as never, {

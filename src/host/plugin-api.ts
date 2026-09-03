@@ -10,18 +10,12 @@ export interface DocInfo {
 
 /** handed to a command's run(). only the members laymirror uses are typed. */
 export interface PluginApi {
-  appVersion: string;
   docInfo(): DocInfo | null;
   showToast(message: string): void;
   /** persisted per plugin, json-serialised into localStorage. */
   storage: {
     get(key: string): unknown;
     set(key: string, value: unknown): void;
-  };
-  /** declared settings only — get plus a change subscription, not a record. */
-  settings: {
-    get(key: string): unknown;
-    onChanged(handler: (key: string) => void): () => void;
   };
 }
 
@@ -63,7 +57,6 @@ export function bootApi(pluginId: string): PluginApi {
   };
 
   return {
-    appVersion: 'unknown',
     docInfo: () => null,
     showToast: (message) => console.log(`[laymirror] ${message}`),
     storage: {
@@ -78,7 +71,6 @@ export function bootApi(pluginId: string): PluginApi {
         }
       },
     },
-    settings: { get: () => undefined, onChanged: () => () => {} },
   };
 }
 

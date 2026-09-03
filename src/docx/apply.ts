@@ -88,7 +88,7 @@ function classifyBare(
 }
 
 /** cardmirror's export style ids -> the template's own. */
-export function applyStyles(documentXml: string, blueprint: Blueprint): string {
+function applyStyles(documentXml: string, blueprint: Blueprint): string {
   const doc = parseXml(documentXml, DOCUMENT);
   let openCard = false;
 

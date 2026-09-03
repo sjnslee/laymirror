@@ -65,7 +65,6 @@ export function decode(base64: string): Uint8Array {
 
 export interface Store {
   template(id: string | null): Template | null;
-  templates(): { id: string; name: string }[];
   addTemplate(template: Template): void;
   lastTemplateId(): string | null;
   doc(key: string | null): DocState;
@@ -101,12 +100,6 @@ export function store(api: PluginApi): Store {
       } catch {
         return null;
       }
-    },
-
-    templates() {
-      return Object.keys(templates())
-        .map((id) => ({ id, name: held(id)?.name ?? id }))
-        .filter((entry) => held(entry.id) !== null);
     },
 
     addTemplate(template) {
