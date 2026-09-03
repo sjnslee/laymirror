@@ -38,92 +38,127 @@ export interface PanelHost {
   actions: Action[];
 }
 
+// cardmirror's own tokens, so the panel follows its light and dark themes. the
+// fallbacks are its light values, for a build that renames them.
 const CSS = `
 #${PANEL_ID} {
   position: fixed;
-  top: 64px;
-  right: 24px;
+  top: 56px;
+  right: 20px;
   z-index: 99997;
-  width: 340px;
-  max-height: calc(100vh - 96px);
+  width: 320px;
+  max-height: calc(100vh - 88px);
   overflow: auto;
-  padding: 14px 16px 16px;
-  border-radius: 10px;
-  background: #23252a;
-  color: #e9eaec;
-  font: 13px/1.45 system-ui, -apple-system, sans-serif;
-  box-shadow: 0 10px 40px rgba(0,0,0,.5);
+  padding: 12px 14px 14px;
+  border: 1px solid var(--pmd-c-border-soft, #d0d0d0);
+  border-radius: 4px;
+  background: var(--pmd-c-bg, #fff);
+  color: var(--pmd-c-text, #222);
+  font: 13px/1.45 var(--pmd-ui-font, system-ui, -apple-system, sans-serif);
+  box-shadow: 0 8px 32px var(--pmd-c-shadow-deep, rgba(0, 0, 0, .25));
 }
 #${PANEL_ID} h2 {
-  margin: 0 0 10px;
-  font: 600 13px/1 system-ui, sans-serif;
-  letter-spacing: .08em;
+  margin: 0;
+  font: 600 12px/1.4 inherit;
   text-transform: uppercase;
-  opacity: .6;
+  letter-spacing: .06em;
+  color: var(--pmd-c-text-muted, #666);
 }
-#${PANEL_ID} .lm-close {
-  position: absolute;
-  top: 10px;
-  right: 12px;
+#${PANEL_ID} .lm-title {
+  font-size: 13px;
+  text-transform: none;
+  letter-spacing: normal;
+  color: var(--pmd-c-text, #222);
 }
-#${PANEL_ID} section { margin-top: 14px }
+#${PANEL_ID} section { margin-top: 12px }
 #${PANEL_ID} .lm-row {
   display: flex;
   gap: 8px;
   align-items: center;
   justify-content: space-between;
 }
-#${PANEL_ID} .lm-label { opacity: .6 }
-#${PANEL_ID} .lm-note { margin-top: 4px; font-size: 12px; opacity: .55 }
-#${PANEL_ID} .lm-path { word-break: break-all }
-#${PANEL_ID} .lm-problem { color: #ffb4a2; opacity: 1 }
-#${PANEL_ID} .lm-done { color: #9fe0a8; opacity: 1 }
-#${PANEL_ID} label.lm-field {
-  display: block;
-  margin-top: 8px;
+#${PANEL_ID} .lm-note {
+  margin: 4px 0 0;
+  font-size: 12px;
+  color: var(--pmd-c-text-muted, #666);
 }
+#${PANEL_ID} .lm-path { word-break: break-all }
+#${PANEL_ID} .lm-problem { color: var(--pmd-c-error, #b00020) }
+#${PANEL_ID} .lm-done { color: var(--pmd-c-success, #16a34a) }
+#${PANEL_ID} label.lm-field { display: block; margin-top: 8px }
 #${PANEL_ID} label.lm-field span {
   display: block;
   margin-bottom: 3px;
   font-size: 12px;
-  opacity: .6;
+  color: var(--pmd-c-text-muted, #666);
 }
 #${PANEL_ID} input {
   width: 100%;
   box-sizing: border-box;
-  padding: 5px 7px;
-  border: 1px solid #454850;
-  border-radius: 5px;
-  background: #1a1c20;
+  padding: 4px 6px;
+  border: 1px solid var(--pmd-c-border, #c8c8c8);
+  border-radius: 3px;
+  background: var(--pmd-c-bg, #fff);
   color: inherit;
   font: inherit;
 }
-#${PANEL_ID} input:focus { outline: 1px solid #7aa2f7; border-color: #7aa2f7 }
+#${PANEL_ID} input:focus {
+  outline: none;
+  border-color: var(--pmd-c-focus, #4a90e2);
+  box-shadow: 0 0 0 2px var(--pmd-c-focus-glow, rgba(74, 144, 226, .18));
+}
 #${PANEL_ID} button {
-  padding: 4px 11px;
-  border: 1px solid #454850;
-  border-radius: 5px;
-  background: #2e3138;
+  flex: none;
+  padding: 4px 10px;
+  border: 1px solid var(--pmd-c-border, #c8c8c8);
+  border-radius: 4px;
+  background: var(--pmd-c-bg, #fff);
   color: inherit;
   font: inherit;
   cursor: pointer;
 }
-#${PANEL_ID} button:hover { background: #3a3e46 }
-#${PANEL_ID} button.lm-primary { background: #3b5bdb; border-color: #3b5bdb }
-#${PANEL_ID} button.lm-primary:hover { background: #4c6ef5 }
-#${PANEL_ID} button[disabled] { opacity: .45; cursor: default }
+#${PANEL_ID} button:hover { background: var(--pmd-c-button-hover, rgba(0, 0, 0, .06)) }
+#${PANEL_ID} button.lm-primary {
+  background: var(--pmd-c-accent, #2563eb);
+  border-color: var(--pmd-c-accent, #2563eb);
+  color: var(--pmd-c-text-on-accent, #fff);
+}
+#${PANEL_ID} button.lm-primary:hover { background: var(--pmd-c-accent-hover, #1d4ed8) }
+#${PANEL_ID} button.lm-close {
+  padding: 0 6px;
+  border-color: transparent;
+  background: none;
+  font-size: 15px;
+  line-height: 1.4;
+  color: var(--pmd-c-text-muted, #666);
+}
+#${PANEL_ID} button.lm-close:hover { color: var(--pmd-c-danger, #c00) }
+#${PANEL_ID} button[disabled] { opacity: .5; cursor: default }
+/* an inset wash darkens whatever the button's own background is, so the plain
+   and the accent button both read as pressed */
+#${PANEL_ID} button:active:not([disabled]) {
+  box-shadow: inset 0 0 0 99px var(--pmd-c-button-press, rgba(0, 0, 0, .15));
+}
 #${PANEL_ID} .lm-actions {
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
-  margin-top: 16px;
-  padding-top: 14px;
-  border-top: 1px solid #34373e;
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid var(--pmd-c-divider, #e0e0e0);
 }
+@keyframes lm-flash {
+  from { background: var(--pmd-c-accent-soft, rgba(37, 99, 235, .12)) }
+  to { background: transparent }
+}
+#${PANEL_ID} .lm-flash { animation: lm-flash .7s ease-out }
 `;
 
 let host: PanelHost | null = null;
 let onKey: ((event: KeyboardEvent) => void) | null = null;
+/** the outcome the panel last drew, so a new one is flashed rather than quietly
+ *  swapped in under the button that caused it. */
+let shown: Outcome | null = null;
 
 export const isOpen = (): boolean => document.getElementById(PANEL_ID) !== null;
 
@@ -134,14 +169,35 @@ export function closePanel(): void {
   }
   document.getElementById(PANEL_ID)?.remove();
   host = null;
+  shown = null;
 }
 
-function button(label: string, run: () => void, primary = false): HTMLButtonElement {
+/** an action can take a file read and a write, and none of it shows up in the
+ *  editor — so the button itself has to say it was pressed and is still busy. */
+async function press(el: HTMLButtonElement, run: () => void | Promise<void>): Promise<void> {
+  if (el.disabled) return;
+  const label = el.textContent ?? '';
+  el.disabled = true;
+  el.textContent = '…';
+  try {
+    await run();
+  } finally {
+    el.disabled = false;
+    el.textContent = label;
+    refresh();
+  }
+}
+
+function button(
+  label: string,
+  run: () => void | Promise<void>,
+  primary = false,
+): HTMLButtonElement {
   const el = document.createElement('button');
   el.type = 'button';
   el.textContent = label;
   if (primary) el.className = 'lm-primary';
-  el.addEventListener('click', run);
+  el.addEventListener('click', () => void press(el, run));
   return el;
 }
 
@@ -149,7 +205,6 @@ function row(label: string, control: HTMLElement): HTMLDivElement {
   const el = document.createElement('div');
   el.className = 'lm-row';
   const name = document.createElement('span');
-  name.className = 'lm-label';
   name.textContent = label;
   el.append(name, control);
   return el;
@@ -180,15 +235,20 @@ export function refresh(): void {
   const body = document.createElement('div');
 
   const title = document.createElement('h2');
+  title.className = 'lm-title';
   title.textContent = 'laymirror';
-  body.append(title, button('×', closePanel));
-  (body.lastElementChild as HTMLElement).className = 'lm-close';
+  const close = button('×', closePanel);
+  close.className = 'lm-close';
+  const head = document.createElement('div');
+  head.className = 'lm-row';
+  head.append(title, close);
+  body.append(head);
 
   const lay = document.createElement('section');
   lay.append(
     row(
       it.on() ? 'lay formatting is on' : 'lay formatting is off',
-      button(it.on() ? 'turn off' : 'turn on', () => void act(() => it.onToggle()), !it.on()),
+      button(it.on() ? 'turn off' : 'turn on', () => it.onToggle(), !it.on()),
     ),
   );
   body.append(lay);
@@ -211,7 +271,7 @@ export function refresh(): void {
   const template = document.createElement('section');
   const name = it.templateName();
   template.append(
-    row('template', button(name ? 'change…' : 'load…', () => void act(() => it.onLoadTemplate()))),
+    row('template', button(name ? 'change…' : 'load…', () => it.onLoadTemplate())),
     // the path, not the name: the name is the last segment of it
     note(name ? (it.templatePath() ?? name) : 'none loaded', name ? 'lm-path' : 'lm-note'),
   );
@@ -255,17 +315,20 @@ export function refresh(): void {
   done.append(
     row(
       'the file on disk',
-      button('apply now', () => void act(() => it.onApply(typed(inputs))), true),
+      button('apply now', () => it.onApply(typed(inputs)), true),
     ),
   );
   const outcome = it.outcome();
-  done.append(
+  const line =
     outcome === null
       ? note('nothing written yet')
       : outcome.ok
         ? note(`${outcome.template} applied at ${clock(outcome.at)}`, 'lm-done')
-        : note(outcome.why, 'lm-problem'),
-  );
+        : note(outcome.why, 'lm-problem');
+  // a write that changed nothing on screen is worth pointing at
+  if (outcome !== null && outcome !== shown) line.classList.add('lm-flash');
+  shown = outcome;
+  done.append(line);
   body.append(done);
 
   body.append(actionRow(it));
@@ -275,12 +338,10 @@ export function refresh(): void {
 function actionRow(it: PanelHost): HTMLDivElement {
   const actions = document.createElement('div');
   actions.className = 'lm-actions';
-  for (const action of it.actions) actions.append(button(action.label, () => void act(action.run)));
+  for (const action of it.actions) actions.append(button(action.label, action.run));
   return actions;
 }
 
-/** run an action, then show what it did. the panel is the only feedback
- *  surface laymirror has, so it must not go stale behind an await. */
 /** only the boxes with something in them. an empty box is not a blank header
  *  line, it is "the template's own text is fine". */
 const typed = (inputs: ReadonlyMap<string, HTMLInputElement>): Values => {
@@ -294,11 +355,6 @@ const typed = (inputs: ReadonlyMap<string, HTMLInputElement>): Values => {
 /** minutes matter, seconds do not: this answers "did that save go through?" */
 const clock = (at: number): string =>
   new Date(at).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
-
-async function act(run: () => void | Promise<void>): Promise<void> {
-  await run();
-  refresh();
-}
 
 export function openPanel(next: PanelHost): void {
   if (isOpen()) {
