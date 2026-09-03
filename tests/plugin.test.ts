@@ -190,6 +190,27 @@ describe('the panel', () => {
   });
 });
 
+describe('diagnostics', () => {
+  const dialog = () => document.getElementById('laymirror-diagnose');
+  const escape = () =>
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+
+  it('closes on escape', async () => {
+    await host.run('laymirror.diagnose');
+    expect(dialog()).not.toBeNull();
+    escape();
+    expect(dialog()).toBeNull();
+  });
+
+  it('stops listening once it is closed', async () => {
+    await host.run('laymirror.diagnose');
+    escape();
+    await host.run('laymirror.panel');
+    escape();
+    expect(panel()).toBeNull();
+  });
+});
+
 describe('turning it on', () => {
   const turnOn = async () => {
     await host.run('laymirror.panel');
