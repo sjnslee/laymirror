@@ -1,22 +1,18 @@
 // the parts of a header or footer the user is allowed to change.
 //
-// a school template is a fixed thing — the rule, the fonts, the page numbering
-// — with two or three words in it that belong to whoever is holding the file:
-// the team code, the year, the file title, the cutter's name. laymirror does
-// not build a header. it finds those words inside the school's own header and
-// swaps them, leaving every other byte alone.
+// laymirror does not build a header. it finds the two or three words inside the
+// template's own header that belong to whoever holds the file — a team code, a
+// year, a title, a name — and swaps them, leaving every other byte alone.
 //
 // two ways to find them, in order of preference:
 //
 //   marked    the template wraps a placeholder in a zero-width character
 //             (`<zwj>File Title<zwj>` in word). explicit, so it wins.
 //   inferred  no marks anywhere, so every stretch of plain text between tabs
-//             and word fields is offered instead. on a lay header that is
-//             exactly "BCP 26-27", "File Title" and "Name" — which is the
-//             whole editable surface of the thing.
+//             and word fields is offered instead.
 //
-// discovery always runs against the pristine template, never against a filled
-// document, so a field keeps its identity after its value has been replaced.
+// discovery always runs against the pristine template, so a field keeps its
+// identity after its value has been replaced.
 
 import { parseXml, serializeXml } from './xml.js';
 
@@ -47,16 +43,14 @@ interface Segment {
   to: number;
 }
 
-/** what interrupted the text at an offset. a word field's own decoration —
- *  the " page " and " of " around `PAGE` and `NUMPAGES` — reads as plain text
- *  but is not the user's to edit, and touching a field boundary is what tells
- *  it apart from a header's real content. */
+/** what interrupted the text at an offset. the " page " and " of " around
+ *  `PAGE` and `NUMPAGES` read as plain text but are not the user's to edit, and
+ *  touching a field boundary is what tells them apart from real content. */
 type Break = { at: number; field: boolean };
 
-/** properties, not content: `w:pPr` holds the paragraph's tab stops, and
- *  reading those as tabs would split a header at positions nothing is
- *  written at. `mc:Fallback` is the vml copy of a text box word already gave
- *  us in `mc:Choice`, so counting it would offer every field twice. */
+/** properties, not content. `w:pPr` holds tab stops, and reading those as tabs
+ *  would split a header where nothing is written; `mc:Fallback` is the vml copy
+ *  of a text box already given in `mc:Choice`, so it doubles every field. */
 const SKIP = new Set(['w:pPr', 'w:rPr', 'w:instrText', 'w:delText', 'mc:Fallback']);
 
 function tagged(parent: Element, tag: string): Element[] {
@@ -73,19 +67,15 @@ const inFallback = (node: Element): boolean => {
   return false;
 };
 
-/** the `w:t` nodes this paragraph owns, in document order, with a flattened
- *  text offset each — plus the offsets where the text is interrupted.
+/** the `w:t` nodes this paragraph owns, in document order, each with a flattened
+ *  text offset — plus the offsets where the text is interrupted.
  *
- *  nested paragraphs are skipped rather than inlined: a header's rule is drawn
- *  by a text box, and a text box holds whole paragraphs inside the run of the
- *  paragraph that anchors it. each of those is a paragraph in its own right and
- *  is visited on its own.
+ *  a nested paragraph is skipped rather than inlined: a text box holds whole
+ *  paragraphs inside the run that anchors it, and each is visited on its own.
  *
- *  a tab, a line break and a word field all interrupt: a header reads
- *  "BCP 26-27 <tab> File Title", and the two sides of that tab are two
- *  different things to edit. everything between a field's begin and end is
- *  dropped outright — the "3" in "page 3 of 9" is a result word recomputes,
- *  and offering to edit it would be offering a lie. */
+ *  a tab, a line break and a word field all interrupt — the two sides of a tab
+ *  are two different things to edit. everything between a field's begin and end
+ *  is dropped: the "3" in "page 3 of 9" is a result word recomputes. */
 function flatten(paragraph: Element): { runs: TextRun[]; breaks: Break[] } {
   const runs: TextRun[] = [];
   const breaks: Break[] = [];
@@ -121,8 +111,8 @@ function flatten(paragraph: Element): { runs: TextRun[]; breaks: Break[] } {
   return { runs, breaks };
 }
 
-/** spans wrapped in a zero-width character, which is the template author
- *  saying "this bit is mine to change". */
+/** spans wrapped in a zero-width character: the template author saying
+ *  "this bit is mine to change". */
 function markedSegments(text: string): Segment[] {
   const marks: number[] = [];
   for (let i = 0; i < text.length; i++) {
@@ -165,7 +155,7 @@ interface Placed {
 }
 
 /** every editable span in one header or footer, against a document the caller
- *  can go on to edit — a segment is only meaningful next to the nodes it was
+ *  can go on to edit: a segment only means anything beside the nodes it was
  *  measured over. */
 function place(partName: string, doc: Document): Placed[] {
   const out: Placed[] = [];
@@ -194,8 +184,7 @@ function place(partName: string, doc: Document): Placed[] {
   return out;
 }
 
-/** headers first, then footers, each in part order — the order they read on
- *  the page, rather than the order they sort in. */
+/** headers first, then footers: the order they read on the page */
 const inReadingOrder = (parts: Record<string, string>): string[] =>
   Object.keys(parts)
     .filter((name) => HEADER_OR_FOOTER.test(name))
@@ -211,11 +200,10 @@ export function findFields(parts: Record<string, string>): Field[] {
   return out;
 }
 
-/** replace the runs a segment covers with one run's worth of text.
- *
- *  the value lands whole in the segment's first node and the rest keep only
- *  what falls outside — a `w:r` carries the formatting, so emptying one is
- *  safe where deleting it would take the small caps with it. */
+/** replace the runs a segment covers with one run's worth of text. the value
+ *  lands whole in the first node and the rest keep only what falls outside — a
+ *  `w:r` carries the formatting, so emptying one is safe where deleting it
+ *  would take the small caps with it. */
 function writeSegment(runs: readonly TextRun[], segment: Segment, value: string): void {
   let written = false;
   for (const run of runs) {
@@ -231,9 +219,8 @@ function writeSegment(runs: readonly TextRun[], segment: Segment, value: string)
   }
 }
 
-/** the template's parts with every named value filled in. a field with no
- *  value keeps the template's own text, so an unfilled profile prints the
- *  school's placeholder rather than a blank. */
+/** the template's parts with every named value filled in. a field with no value
+ *  keeps the template's own text rather than printing a blank. */
 export function fillFields(
   parts: Record<string, string>,
   values: Values,

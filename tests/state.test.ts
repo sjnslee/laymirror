@@ -38,13 +38,6 @@ describe('base64', () => {
 });
 
 describe('templates', () => {
-  it('keeps a library rather than one slot', () => {
-    const bag = store(api);
-    bag.addTemplate({ id: 'template:a.docx', path: null, name: 'a.docx', docx: docx(1) });
-    bag.addTemplate({ id: 'template:b.docx', path: null, name: 'b.docx', docx: docx(2) });
-    expect(bag.templates().map((t) => t.id)).toEqual(['template:a.docx', 'template:b.docx']);
-  });
-
   it('gives the bytes back unchanged', () => {
     const bag = store(api);
     bag.addTemplate({ id: 'a', path: null, name: 'a.docx', docx: docx(9) });

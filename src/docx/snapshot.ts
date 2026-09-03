@@ -1,16 +1,9 @@
-// a template's identity: the parts that make a document the school's rather
-// than a generic export.
+// a template's identity: the parts cardmirror's exporter drops on every save.
 //
-// cardmirror's exporter builds a fresh package on every save — one hardcoded
-// letter sectPr with 1" margins, its own styles.xml, and no header, footer or
-// theme at all. so these parts are not something we decorate a file with; they
-// are something the file keeps losing, and this module is how it gets them
-// back.
-//
-// everything here is carried verbatim, bytes and all. an earlier design parsed
-// the template into a model and re-emitted it, which silently dropped every
-// property nobody remembered to parse — smallCaps, thick underlines, borders.
-// bytes cannot forget, and they carry a school's logo as readily as its fonts.
+// everything is carried verbatim, bytes and all. parsing the template into a
+// model and re-emitting it silently dropped every property nobody remembered to
+// parse — smallCaps, thick underlines, borders. bytes cannot forget, and they
+// carry a crest as readily as a font.
 
 import { CONTENT_TYPES, readText, writeText, type Parts } from './zip.js';
 
@@ -23,14 +16,10 @@ const HEADER_TYPE = `${REL_BASE}/header`;
 const FOOTER_TYPE = `${REL_BASE}/footer`;
 const TEMPLATE_TYPE = `${REL_BASE}/attachedTemplate`;
 
-/** word resolves these parts through a relationship, not by their name, so a
- *  part copied in without one is a part word never reads.
- *
- *  cardmirror's exporter writes relationships for styles and settings, and for
- *  numbering only when it emitted a list of its own — it never writes one for
- *  the theme or the font table. so a template's theme fonts (`asciiTheme=
- *  "minorHAnsi"`) would resolve to nothing, which is most of a school's
- *  typography, silently. */
+/** word resolves these parts through a relationship, not by name, so a part
+ *  copied in without one is never read. cardmirror writes none for the theme or
+ *  the font table, so theme fonts (`asciiTheme="minorHAnsi"`) would silently
+ *  resolve to nothing — which is most of a template's typography. */
 const RELATED: [RegExp, string][] = [
   [/\/styles\.xml$/, `${REL_BASE}/styles`],
   [/\/numbering\.xml$/, `${REL_BASE}/numbering`],
@@ -39,8 +28,7 @@ const RELATED: [RegExp, string][] = [
 ];
 
 /** carried whole whenever the template has them. `numbering.xml` is here
- *  because a lay template numbers its block headings, and a list that
- *  references a missing `numId` renders as nothing at all. */
+ *  because a list referencing a missing `numId` renders as nothing at all. */
 const CARRIED = [
   'word/styles.xml',
   'word/theme/theme1.xml',
@@ -92,10 +80,9 @@ export function readSectPr(documentXml: string): string | null {
   return all.length ? all[all.length - 1]![0] : null;
 }
 
-/** a header or footer brings its own rels with it — a school crest in the
- *  header is an image part the header points at, and copying the header
- *  without it puts a red x on every page. external targets are left alone:
- *  they are urls, not parts. */
+/** a header brings its own rels with it — a crest is an image part the header
+ *  points at, and copying the header without it puts a red x on every page.
+ *  external targets are urls, not parts, so they are left alone. */
 function carryDependencies(parts: Parts, partName: string, into: Parts): void {
   const relsName = relsFor(partName);
   const relsXml = readText(parts, relsName);
@@ -111,9 +98,8 @@ function carryDependencies(parts: Parts, partName: string, into: Parts): void {
   }
 }
 
-/** null when the package has nothing worth carrying — a document with no
- *  header, no theme and no styles of its own has no identity to keep, and a
- *  snapshot of nothing would later overwrite something. */
+/** null when there is nothing worth carrying: a snapshot of nothing would
+ *  later overwrite something. */
 export function captureSnapshot(parts: Parts): Snapshot | null {
   const relsXml = readText(parts, DOC_RELS);
   const carried: Parts = {};
@@ -153,8 +139,7 @@ export function captureSnapshot(parts: Parts): Snapshot | null {
 }
 
 /** the declarations `[Content_Types].xml` needs for the carried parts: the
- *  template's own where it has one, so a part word declared unusually keeps
- *  its declaration, and a Default for every extension the media uses. */
+ *  template's own where it has one, plus a Default per media extension. */
 function contentTypes(
   parts: Parts,
   names: readonly string[],
@@ -215,9 +200,8 @@ function defaultOverride(partName: string): string | null {
   return null;
 }
 
-/** ids we mint ourselves, so restoring twice reuses an entry rather than
- *  stacking a second one, and so we never collide with the ids cardmirror's
- *  own exporter hands out. */
+/** minted, so restoring twice reuses an entry rather than stacking a second,
+ *  and so we never collide with cardmirror's own rIdN. */
 const mintedId = (partName: string): string =>
   `rIdLayMirror${partName.replace(/[^a-zA-Z0-9]/g, '')}`;
 
@@ -234,15 +218,11 @@ const EMPTY_RELS =
   '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">' +
   '</Relationships>';
 
-/** put the school's document back onto a package cardmirror has just rebuilt.
+/** put the template back onto a package cardmirror has just rebuilt.
  *
- *  `override` lets the caller substitute a part it has already edited — the
- *  headers, with the user's own team code filled into them — without the
- *  snapshot itself ever being written to.
- *
- *  the template's own relationship ids are not reused: the fresh package hands
- *  out its own rIdN and they would collide, so each part gets a minted id and
- *  the sectPr's references are rewritten to match. */
+ *  `override` substitutes a part the caller has already edited — the filled-in
+ *  headers — without ever writing to the snapshot. relationship ids are minted
+ *  rather than reused, and the sectPr's references rewritten to match. */
 export function restoreSnapshot(
   parts: Parts,
   snapshot: Snapshot,
@@ -260,9 +240,7 @@ export function restoreSnapshot(
     }
     for (const name of Object.keys(snapshot.parts)) {
       if (ct.includes(`PartName="/${name}"`)) continue;
-      // the template's own override when we have it, otherwise one built from
-      // the part's kind: a part with no declared content type makes word call
-      // the whole file corrupt
+      // a part with no declared content type makes word call the file corrupt
       const override = snapshot.overrides[name] ?? defaultOverride(name);
       if (override) ct = ct.replace('</Types>', `${override}</Types>`);
     }
@@ -292,9 +270,8 @@ export function restoreSnapshot(
   }
 }
 
-/** rewrite `r:id` on the header/footer references to the ids just minted, and
- *  drop any reference whose part didn't come back — a dangling r:id makes word
- *  declare the file corrupt. */
+/** point the header/footer references at the ids just minted, dropping any whose
+ *  part didn't come back — a dangling r:id makes word call the file corrupt. */
 export function retargetSectPr(sectPr: string, remapped: Record<string, string>): string {
   return sectPr.replace(/<w:(header|footer)Reference\b[^>]*\/>/g, (ref) => {
     const id = attr(ref, 'r:id');

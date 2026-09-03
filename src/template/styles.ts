@@ -4,19 +4,15 @@
 // cardmirror's importer has two paths, and which one runs decides everything:
 //
 //   native   — taken when the document's styles look like cardmirror's own.
-//              marks are matched by styleId, so `Style13ptBold` comes back as
-//              a cite mark and `Underline` as an underline mark.
+//              marks are matched by styleId.
 //   legacy   — taken otherwise. paragraph styles are matched by lowercased
-//              w:name, and character styles only by the small table below.
+//              w:name, character styles only by the id table below.
 //
-// the lay donor names (Tag, Cite, card, Underline) are all in the legacy
-// table, which is what makes lay style names safe. `Style13ptBold` is NOT —
-// under the legacy path a cite mark is silently lost. see
-// REQUIRED_FOR_NATIVE_PATH.
+// the lay names (Tag, Cite, card, Underline) are all in the legacy table, which
+// is what makes them safe. `Style13ptBold` is not: under the legacy path a cite
+// mark is silently lost. see REQUIRED_FOR_NATIVE_PATH.
 //
-// verified against the shipped 1.3.0 parse worker.
-
-
+// read off the shipped 1.3.0 parse worker.
 
 /** cardmirror's block vocabulary — the node types its exporter can emit. */
 export type BlockType =
@@ -101,15 +97,10 @@ export const NATIVE_MARK_BY_ID: Record<string, RunType> = {
   AnalyticChar: 'analytic_mark',
 };
 
-/** what cardmirror's *exporter* writes for each type, which is not the same
- *  question as what its importer reads back. `null` means it writes no
- *  `w:pStyle` at all — a cite paragraph and a card body leave the editor as
- *  bare paragraphs, indistinguishable from body text by style alone, which is
- *  why `rewrite.ts` has to recognise them from their runs.
- *
- *  note `tag` leaves as `Heading4`, not as any style named "tag".
- *
- *  verified against the shipped 1.3.0 exporter. */
+/** what cardmirror's *exporter* writes for each type — not the same question as
+ *  what its importer reads back. `null` means no `w:pStyle` at all, so a cite
+ *  paragraph and a card body have to be recognised from their runs instead.
+ *  note `tag` leaves as `Heading4`, not as any style named "tag". */
 export const EXPORT_STYLE_BY_TYPE: Record<BlockType | RunType, string | null> = {
   pocket: 'Heading1',
   hat: 'Heading2',
@@ -134,10 +125,9 @@ export const TYPE_BY_EXPORT_STYLE: Record<string, BlockType | RunType> = Object.
     .map(([type, styleId]) => [styleId, type]),
 );
 
-/** cardmirror decides a document is one of its own when its styles contain
- *  all three of these, matched by id OR name. emitting them is what keeps the
- *  native path — and therefore cite and underline marks — alive through a
- *  round-trip. they cost nothing in word. */
+/** cardmirror calls a document one of its own when its styles contain all three,
+ *  matched by id or name. they are what keep cite and underline marks alive
+ *  through a round-trip, and they cost nothing in word. */
 export const REQUIRED_FOR_NATIVE_PATH: readonly (readonly string[])[] = [
   ['Style13ptBold', 'Style 13 pt Bold'],
   ['StyleUnderline', 'Style Underline'],
@@ -158,14 +148,9 @@ export interface MappingWarning {
   message: string;
 }
 
-/** warn where a mapping will not survive the trip home.
- *
- *  cardmirror reads a reopened document one of two ways. it takes the native
- *  path only when the styles look like its own, and otherwise falls back to
- *  matching paragraph styles by lowercased `w:name` and character styles by a
- *  small id table. so a template style that is in neither table exports
- *  perfectly into word and comes back as an ordinary paragraph — which is the
- *  failure worth telling the user about before they cut a whole file. */
+/** warn where a mapping will not survive the trip home: a template style in
+ *  neither table exports perfectly into word and comes back as an ordinary
+ *  paragraph. */
 export function validateMapping(
   styles: readonly StyleInfo[],
   styleMap: Record<string, string>,
@@ -178,9 +163,8 @@ export function validateMapping(
     bareStyles.card_body,
   ].filter((id): id is string => !!id);
 
-  // on the native path cardmirror matches paragraph styles by id, so any id
-  // its own exporter emits comes back as the type it left as. the legacy
-  // tables are the fallback, and `Analytic` is in neither of them.
+  // on the native path paragraph styles match by id, so any id cardmirror's own
+  // exporter emits comes back as the type it left as
   const native = takesNativePath(
     styles.map((style) => style.id),
     styles.map((style) => style.name),
@@ -238,28 +222,23 @@ export function readStyles(stylesXml: string): StyleInfo[] {
   return out;
 }
 
-/** cardmirror's own legacy tables say which of a school's styles means what:
- *  it matches paragraph styles by lowercased `w:name` and character styles by
- *  a small id table. reading the same tables here means the mapping we pick is
- *  the one cardmirror will agree with when the file comes back. */
+/** reading cardmirror's own legacy tables means the mapping we pick is the one
+ *  it will agree with when the file comes back. */
 const roleOf = (style: StyleInfo): string | null =>
   LEGACY_BY_NAME[style.name.toLowerCase()] ?? LEGACY_BY_ID[style.id] ?? null;
 
-/** the role each cardmirror export style is looking for a home for, and the
- *  kind of style it must land on. a run style mapped onto a paragraph style
- *  would be written as an `rStyle` word cannot resolve, so the kinds are
- *  checked rather than assumed. */
+/** the role each export style wants a home for, and the kind it must land on: a
+ *  run style mapped onto a paragraph style writes an `rStyle` word cannot
+ *  resolve. */
 const WANTED: Record<string, { role: string; kind: StyleInfo['kind'] }> = {
   Heading4: { role: 'tag', kind: 'paragraph' },
   Style13ptBold: { role: 'char-cite', kind: 'character' },
   StyleUnderline: { role: 'char-underline', kind: 'character' },
 };
 
-/** every style playing each role, in definition order.
- *
- *  all of them, not just the first: cardmirror's own `Heading4` is named
- *  "heading 4", which its legacy table also reads as a tag — so a template's
- *  `Tag` would lose to the very style we are trying to move away from. */
+/** every style playing each role, in definition order — all of them, because
+ *  cardmirror's own `Heading4` is named "heading 4" and its legacy table reads
+ *  that as a tag too, so a template's `Tag` would lose to it. */
 function rolesIn(styles: readonly StyleInfo[], kind?: StyleInfo['kind']): Map<string, string[]> {
   const byRole = new Map<string, string[]>();
   for (const style of styles) {
@@ -287,10 +266,9 @@ export function deriveBareStyles(styles: readonly StyleInfo[]): BareStyles {
 
 /** map cardmirror's export ids onto the template's own.
  *
- *  identity is the default and is usually right for Heading1-3. it is wrong
- *  for a tag: cardmirror exports one as `Heading4`, but a template whose tag
- *  style is its own `Tag` would render every tag in word's stock italic blue.
- *  so where the template defines a style whose role matches, that wins. */
+ *  identity is the default and usually right for Heading1-3. it is wrong for a
+ *  tag: cardmirror exports one as `Heading4`, which word renders in its stock
+ *  italic blue. so a template style whose role matches wins. */
 export function deriveStyleMap(styles: readonly StyleInfo[]): Record<string, string> {
   const defined = new Set(styles.map((style) => style.id));
   const byKind = {
@@ -302,15 +280,15 @@ export function deriveStyleMap(styles: readonly StyleInfo[]): Record<string, str
   for (const exportId of Object.values(EXPORT_STYLE_BY_TYPE)) {
     if (!exportId) continue;
     const wanted = WANTED[exportId];
-    // the school's own style, never cardmirror's — a candidate equal to the id
-    // we are remapping is the thing we are trying to get away from
+    // never cardmirror's own — a candidate equal to the id being remapped is
+    // the thing we are trying to get away from
     const preferred = wanted
       ? (byKind[wanted.kind as 'paragraph' | 'character'] ?? byKind.paragraph)
           .get(wanted.role)
           ?.find((id) => id !== exportId)
       : undefined;
-    // never map onto a style the template does not define — word would show
-    // the text unstyled, which is worse than cardmirror's own default
+    // never map onto a style the template does not define: word shows that
+    // text unstyled, which is worse than cardmirror's own default
     if (preferred && preferred !== exportId) map[exportId] = preferred;
     else if (defined.has(exportId)) map[exportId] = exportId;
   }

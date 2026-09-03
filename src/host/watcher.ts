@@ -1,23 +1,21 @@
-// save detection by polling.
+// save detection by polling: cardmirror has no save hook for plugins, so the
+// file's mtime is the signal.
 //
-// cardmirror has no save hook for plugins, so the file itself is the signal:
-// `statFile` until the mtime moves. two things make that safe enough to hang
-// a rewrite off. a change has to be seen twice with the same size before it
-// counts, so a save caught half-written is never read; and our own write is
-// absorbed by `resync`, or the rewrite would retrigger the watcher forever.
+// a change has to be seen twice at the same size before it counts, so a save
+// caught half-written is never read; and our own write is absorbed by `resync`,
+// or the rewrite would retrigger the watcher forever.
 
 import { statFile, type FileStat } from './electron.js';
 
 const FOCUSED_MS = 700;
-/** nothing saves a document in an app nobody is looking at, but a sync client
- *  might, so this backs off rather than stopping. */
+/** a sync client can still write while the app is blurred, so back off rather
+ *  than stop. */
 const BLURRED_MS = 5000;
 
 export interface Watcher {
   start(path: string): void;
   stop(): void;
-  /** call straight after writing the file ourselves, so the write we just
-   *  made is not reported back as the user saving. */
+  /** call after writing the file ourselves, or the write comes back as a save */
   resync(): Promise<void>;
 }
 

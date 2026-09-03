@@ -1,11 +1,8 @@
-// a school template, and everything laymirror reads out of one.
+// a template, and everything laymirror reads out of one.
 //
-// the template is kept as the file itself — the whole .docx, byte for byte —
-// and everything else is derived from it on demand. an earlier design stored a
-// digested profile instead, which meant every new thing laymirror learned to
-// read (numbering, a crest in the header, a page break in a style) needed the
-// user to load their template again. the file is the truth; a blueprint is
-// just this session's reading of it.
+// the whole .docx is kept byte for byte and everything else derived from it on
+// demand. storing a digested profile instead meant every new thing laymirror
+// learned to read needed the user to load their template again.
 
 import { findFields, type Field } from '../docx/fields.js';
 import { captureSnapshot, type Snapshot } from '../docx/snapshot.js';
@@ -21,11 +18,10 @@ import {
 const STYLES = 'word/styles.xml';
 
 export interface Template {
-  /** one per file, so two schools' templates cannot collide. */
+  /** one per file, so two templates cannot collide. */
   id: string;
   name: string;
-  /** where the user picked it from, so an apply can go back and re-read it.
-   *  null when it was loaded before laymirror kept paths. */
+  /** where the user picked it from, so an apply can go back and re-read it */
   path: string | null;
   docx: Uint8Array;
 }
@@ -46,8 +42,7 @@ export interface Blueprint {
 
 export type ReadResult = { ok: true; blueprint: Blueprint } | { ok: false; error: string };
 
-/** the header and footer parts as text, which is the form the field machinery
- *  works in. */
+/** the header and footer parts as text, which is what the field code works in */
 export function headerParts(snapshot: Snapshot): Record<string, string> {
   const out: Record<string, string> = {};
   for (const name of Object.keys(snapshot.parts)) {

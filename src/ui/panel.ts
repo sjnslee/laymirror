@@ -1,27 +1,16 @@
 // the laymirror menu.
 //
-// a plugin cannot put a button on cardmirror's ribbon and cannot add a
-// settings page, so this is a floating panel over the editor. it is the only
-// place laymirror has to say anything, which is why it says all of it: whether
-// the document is lay, which template it is wearing, what is in the header —
-// and, because none of laymirror's work shows up in the editor, what the last
-// attempt to write the file actually did.
+// a plugin cannot put a button on cardmirror's ribbon and cannot add a settings
+// page, so this is a floating panel over the editor. none of laymirror's work
+// shows up in the editor, which is why the panel also reports what the last
+// write to the file actually did.
 
 import type { Field, Values } from '../docx/fields.js';
 
 const PANEL_ID = 'laymirror-panel';
 const STYLE_ID = 'laymirror-panel-style';
 
-/** what the last attempt to put the template onto the file did. laymirror
- *  writes a document nobody is looking at — cardmirror shows the editor, not
- *  the file — so without this a working plugin and a broken one look the same. */
-/** whether the template was taken fresh off disk or from the copy laymirror is
- *  holding. */
-export type Source = 'file' | 'stored';
-
-export type Outcome =
-  | { ok: true; at: number; template: string; fields: number; source: Source }
-  | { ok: false; why: string };
+export type Outcome = { ok: true; at: number; template: string } | { ok: false; why: string };
 
 export interface Action {
   label: string;
@@ -86,8 +75,9 @@ const CSS = `
 }
 #${PANEL_ID} .lm-label { opacity: .6 }
 #${PANEL_ID} .lm-note { margin-top: 4px; font-size: 12px; opacity: .55 }
-#${PANEL_ID} .lm-problem { margin-top: 4px; font-size: 12px; color: #ffb4a2 }
-#${PANEL_ID} .lm-done { margin-top: 4px; font-size: 12px; color: #9fe0a8 }
+#${PANEL_ID} .lm-path { word-break: break-all }
+#${PANEL_ID} .lm-problem { color: #ffb4a2; opacity: 1 }
+#${PANEL_ID} .lm-done { color: #9fe0a8; opacity: 1 }
 #${PANEL_ID} label.lm-field {
   display: block;
   margin-top: 8px;
@@ -167,10 +157,10 @@ function row(label: string, control: HTMLElement): HTMLDivElement {
 
 function note(
   text: string,
-  kind: 'lm-note' | 'lm-problem' | 'lm-done' = 'lm-note',
+  kind: 'lm-note' | 'lm-problem' | 'lm-done' | 'lm-path' = 'lm-note',
 ): HTMLParagraphElement {
   const el = document.createElement('p');
-  el.className = kind;
+  el.className = kind === 'lm-note' ? kind : `lm-note ${kind}`;
   el.textContent = text;
   return el;
 }
@@ -181,8 +171,7 @@ export function refresh(): void {
   const root = document.getElementById(PANEL_ID);
   if (!root || !host) return;
   // a save can land while a header field is being typed into, and rebuilding
-  // the panel under the caret would eat the word. the value is already held,
-  // so the only thing going stale is the line saying when the last write was
+  // the panel under the caret would eat the word
   if (document.activeElement?.tagName === 'INPUT' && root.contains(document.activeElement)) {
     return;
   }
@@ -209,7 +198,7 @@ export function refresh(): void {
   // assumption that something is happening
   if (!it.on()) {
     body.append(
-      note('this document keeps cardmirror\u2019s own formatting. turn it on to wear the school\u2019s template.'),
+      note('using cardmirror\u2019s own formatting. turn lay formatting on to apply a template every time you save.'),
       actionRow(it),
     );
     root.replaceChildren(...body.childNodes);
@@ -223,11 +212,9 @@ export function refresh(): void {
   const name = it.templateName();
   template.append(
     row('template', button(name ? 'change…' : 'load…', () => void act(() => it.onLoadTemplate()))),
-    note(name ?? 'none — laymirror leaves the file alone until one is loaded'),
+    // the path, not the name: the name is the last segment of it
+    note(name ? (it.templatePath() ?? name) : 'none loaded', name ? 'lm-path' : 'lm-note'),
   );
-  const path = it.templatePath();
-  if (name && path) template.append(note(path));
-  if (name) template.append(note('kept for every document until you change it'));
   body.append(template);
 
   const fields = it.fields();
@@ -272,26 +259,13 @@ export function refresh(): void {
     ),
   );
   const outcome = it.outcome();
-  if (outcome === null) {
-    done.append(note('nothing written yet — laymirror rewrites the file on every save'));
-  } else if (outcome.ok) {
-    done.append(
-      note(
-        `${outcome.template} applied at ${clock(outcome.at)} — styles, fonts, ` +
-          `page setup and header. cardmirror still shows its own formatting; ` +
-          `open the file in word to see it.`,
-        'lm-done',
-      ),
-      note(
-        outcome.source === 'file'
-          ? 're-read from the template file'
-          : 'from the stored copy — cardmirror only reads .docx back from a ' +
-            'path, so load the template again to pick up an edit',
-      ),
-    );
-  } else {
-    done.append(note(outcome.why, 'lm-problem'));
-  }
+  done.append(
+    outcome === null
+      ? note('nothing written yet')
+      : outcome.ok
+        ? note(`${outcome.template} applied at ${clock(outcome.at)}`, 'lm-done')
+        : note(outcome.why, 'lm-problem'),
+  );
   body.append(done);
 
   body.append(actionRow(it));

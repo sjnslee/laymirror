@@ -1,11 +1,10 @@
-// the three file calls the save pipeline stands on. signatures read off the
-// shipped preload/main (1.3.0) and all three exercised in the phase 0 spike.
+// the file calls the save pipeline stands on. signatures read off the shipped
+// preload/main at 1.3.0.
 //
-// `readFileAtPath` is scoped — main only serves paths the user has put in play
-// this session or a past one — and only serves .cmir/.docx, so a school's .dotx
-// or macro-enabled .docm cannot come in that way. `openFile` can: it puts the
-// picker in front of the user, reads whatever they chose, and grants the path
-// read scope on the way out. writes are unscoped.
+// `readFileAtPath` is scoped to paths the user has put in play, and serves only
+// .cmir/.docx — so a .dotx or macro-enabled .docm can only come in through
+// `openFile`, which puts the picker up and grants read scope on the way out.
+// writes are unscoped.
 
 export interface FileStat {
   mtimeMs: number;
@@ -63,8 +62,7 @@ export async function readFile(path: string): Promise<ReadFile | null> {
   return (await api()?.readFileAtPath(path)) ?? null;
 }
 
-/** resolves 'collision' rather than throwing when the target exists and the
- *  caller asked for failIfExists. */
+/** resolves 'collision' rather than throwing when failIfExists hits one */
 export async function writeFile(
   path: string,
   bytes: Uint8Array,
@@ -75,8 +73,7 @@ export async function writeFile(
   return a.writeFileAtPath(path, bytes, opts);
 }
 
-/** put the os picker in front of the user and read what they chose. null when
- *  they cancelled, or when the host has no picker at all. */
+/** the os picker. null when the user cancelled, or the host has no picker. */
 export async function openFile(
   filters: { name: string; extensions: string[] }[],
 ): Promise<PickedFile | null> {
@@ -84,8 +81,7 @@ export async function openFile(
   return picked && picked.bytes ? picked : null;
 }
 
-/** the formats a school hands out a template in. `.docm` is on the list
- *  because a lay template usually ships with the squad's macros attached. */
+/** `.docm` is on the list because a lay template usually ships with macros */
 export const WORD_FILES = [
   { name: 'Word document or template', extensions: ['docx', 'docm', 'dotx', 'dotm'] },
 ];

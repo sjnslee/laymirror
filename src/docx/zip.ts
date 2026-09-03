@@ -37,11 +37,3 @@ export function writeText(parts: Parts, name: string, xml: string): void {
 
 export const strToBytes = (text: string): Uint8Array => strToU8(text);
 
-/** a Blob of a docx package, for anything that wants the file rather than the
- *  parts. the copy is deliberate: a view onto a larger buffer would hand the
- *  reader the wrong bytes. */
-export function toBlob(bytes: Uint8Array): Blob {
-  const copy = new Uint8Array(bytes.length);
-  copy.set(bytes);
-  return new Blob([copy.buffer]);
-}

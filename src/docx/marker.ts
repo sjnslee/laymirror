@@ -1,9 +1,9 @@
-// the lay marker: a custom document property beside cardmirror's own
-// `cmirDocId`. it travels with the file to teammates and survives a word
-// round-trip, which is what makes activation per-file rather than per-machine.
+// the lay marker: a custom document property beside cardmirror's own `cmirDocId`.
+// it travels with the file and survives a word round-trip, which is what makes
+// activation per-file rather than per-machine.
 //
-// custom.xml is merged, never replaced — cardmirror keeps its doc id there and
-// sharepoint-derived templates keep a ContentTypeId.
+// custom.xml is merged, never replaced — cardmirror keeps its doc id there, and
+// sharepoint-derived templates a ContentTypeId.
 
 import { MARKER_PROP } from '../host/cardmirror.js';
 import { CONTENT_TYPES, readText, writeText, type Parts } from './zip.js';
@@ -71,8 +71,7 @@ function removeProp(xml: string, name: string): string {
   return xml.replace(propPattern(name), '');
 }
 
-/** the template id this document is marked with, or null when it isn't a lay
- *  document — the whole off-state hinges on this returning null. */
+/** the template id this document is marked with, or null when it isn't lay */
 export function readMarker(parts: Parts): string | null {
   const xml = readText(parts, CUSTOM);
   return xml ? readProp(xml, MARKER_PROP) : null;
@@ -89,9 +88,8 @@ export function clearMarker(parts: Parts): void {
   if (xml) writeText(parts, CUSTOM, removeProp(xml, MARKER_PROP));
 }
 
-/** a donor that never had custom properties needs the part declared in
- *  `[Content_Types].xml` and related from the package root, or word treats
- *  the file as corrupt. */
+/** a package that never had custom properties needs the part declared and
+ *  related from the root, or word treats the file as corrupt. */
 function ensureCustomWired(parts: Parts): void {
   const ct = readText(parts, CONTENT_TYPES);
   if (ct && !ct.includes('/docProps/custom.xml')) {
