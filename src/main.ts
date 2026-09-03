@@ -28,7 +28,6 @@ import {
   openPanel,
   refresh,
   type Outcome,
-  type Source,
 } from './ui/panel.js';
 
 const ID = 'laymirror';
@@ -119,7 +118,7 @@ async function apply(api: PluginApi, fresh = false): Promise<Outcome> {
 
   // asked for by hand: go back to the file first. a background save does not —
   // the template does not change between two keystrokes
-  const source: Source = fresh && (await reread(bag, templateId)) ? 'file' : 'stored';
+  if (fresh) await reread(bag, templateId);
 
   const blueprint = blueprintFor(bag, templateId);
   if (!blueprint) return record({ ok: false, why: 'no template loaded — load one first' });
@@ -146,8 +145,6 @@ async function apply(api: PluginApi, fresh = false): Promise<Outcome> {
       ok: true,
       at: Date.now(),
       template: bag.template(templateId)?.name ?? templateId,
-      fields: blueprint.fields.length,
-      source,
     });
   } catch (err) {
     return record({ ok: false, why: err instanceof Error ? err.message : String(err) });

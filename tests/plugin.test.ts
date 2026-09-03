@@ -258,7 +258,7 @@ describe('re-reading the template', () => {
   const header = () => readText(unzip(host.disk()), 'word/header1.xml')!;
 
   /** the same template with a different word in its header, standing in for
-   *  someone opening it in word and changing the school's name. */
+   *  someone opening it in word and editing it. */
   const edited = (): Uint8Array => {
     const parts = unzip(makeTemplate());
     writeText(
@@ -276,12 +276,6 @@ describe('re-reading the template', () => {
     expect(header()).toContain('New ');
   });
 
-  it('says it went back to the file', async () => {
-    await load();
-    await click('apply now');
-    expect(panel()!.textContent).toContain('re-read from the template file');
-  });
-
   // a template that moved, or a .docm — which cardmirror will not read back
   // from a path at all — is not worth losing an apply over
   it('falls back to the stored copy when the file cannot be read', async () => {
@@ -289,9 +283,7 @@ describe('re-reading the template', () => {
     host.editTemplate(null);
     await click('apply now');
     expect(header()).toContain('Team ');
-    expect(panel()!.textContent).toContain('from the stored copy');
   });
-
 });
 
 describe('between documents and sessions', () => {
