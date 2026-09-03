@@ -1,16 +1,12 @@
 // the save pipeline.
 //
-// cardmirror's exporter rebuilds the package from scratch on every save: its
-// own styles.xml, one hardcoded letter section with 1" margins, and no header,
-// footer or theme at all. so this is not a formatter. it is the thing that puts
-// back what the exporter has just thrown away.
+// cardmirror's exporter rebuilds the package from scratch on every save: its own
+// styles.xml, one hardcoded letter section with 1" margins, and no header, footer
+// or theme. this puts back what the exporter threw away.
 //
-// the template is authoritative, every time. an earlier version asked whether
-// word had written the file and adopted its header if so, which made a header
-// something you edited in word and laymirror preserved. that is backwards for a
-// squad: the school's header is fixed, and the two or three words inside it
-// that change are typed into laymirror's panel, so a file that has been through
-// word comes out looking exactly like a file that has not.
+// the template is authoritative every time, so a file that has been through word
+// comes out looking exactly like one that has not. the two or three words in the
+// header that do change are typed into laymirror's panel instead.
 
 import { fillFields, type Values } from './fields.js';
 import { writeMarker } from './marker.js';
@@ -66,12 +62,10 @@ function setPStyle(doc: Document, paragraph: Element, styleId: string): void {
 
 /** which type a bare paragraph is, judged by the marks its runs carry.
  *
- *  a cite paragraph and a card body leave cardmirror with no style of their
- *  own, and `card` is flattened away on export, so the marks inside are the
- *  only evidence left in the file. the inference reaches exactly one paragraph
- *  past the last mark it saw: guessing further would indent ordinary prose,
- *  while leaving a paragraph bare merely renders it as the template's Normal,
- *  which is the cheaper mistake. */
+ *  a cite paragraph and a card body export with no style at all, so the marks
+ *  inside are the only evidence left. the inference reaches exactly one
+ *  paragraph past the last mark: guessing further would indent ordinary prose,
+ *  while leaving one bare only renders it as the template's Normal. */
 function classifyBare(
   paragraph: Element,
   openCard: boolean,
@@ -166,11 +160,9 @@ function pointAttachedTemplate(parts: Parts, template: string | null): void {
   );
 }
 
-/** put the school's document onto a package cardmirror has just written.
- *
- *  throws rather than returning something half-written: this runs against a
- *  file the user is actively saving, and a partial read must never become a
- *  partial write. */
+/** put the template onto a package cardmirror has just written. throws rather
+ *  than returning something half-written: this runs against a file the user is
+ *  actively saving, and a partial read must never become a partial write. */
 export function applyTemplate(
   bytes: Uint8Array,
   blueprint: Blueprint,

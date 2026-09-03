@@ -1,25 +1,19 @@
-// every undocumented cardmirror internal lives here, and nowhere else.
-// each constant is stamped with the version it was verified against, so a
-// cardmirror upgrade breaks a canary test instead of breaking the plugin
-// mid-round.
-//
-// verified by reading the shipped build (/Applications/cardmirror.app,
-// app.asar) and by the phase 0 spike run against a live editor.
+// every undocumented cardmirror internal lives here and nowhere else, so a
+// cardmirror upgrade breaks a canary test rather than the plugin mid-round.
+// read off the shipped build (/Applications/cardmirror.app, app.asar) at 1.3.0.
 
 export const LS = { recents: 'pmd-recent-files' } as const;
 
-/** where the sanctioned api keeps a plugin's storage bag: one localStorage
- *  entry per plugin holding a plain json object.
+/** where the sanctioned api keeps a plugin's storage bag: one localStorage entry
+ *  per plugin, holding plain json.
  *
- *  read directly because cardmirror builds the api object at registration and
- *  only ever hands it to a command's `run()`. without this, laymirror's save
- *  watcher could not start until the user invoked a command by hand — and a
- *  document that was lay yesterday would sit there doing nothing today. */
+ *  read directly because cardmirror only hands the api object to a command's
+ *  `run()`, and the save watcher has to start before any command has run. */
 export const storageKey = (pluginId: string): string => `plugin:${pluginId}`;
 
-/** cardmirror paints the open document's filename here, and into
- *  `document.title`. these are the only signals that name the current
- *  document when it has no doc id — which is every word-authored .docx. */
+/** cardmirror paints the open document's filename into both. they are the only
+ *  signals naming a document with no doc id — which is every word-authored
+ *  .docx. */
 export const DOC_NAME_CHIP = 'doc-name-chip-text';
 export const TITLE_SUFFIX = ' — CardMirror';
 
@@ -28,10 +22,8 @@ export const MARKER_PROP = 'layMirrorTemplate';
 
 /** a `pmd-recent-files` entry. `handle` is an absolute path on electron.
  *
- *  the list is capped at ten and the open document is unshifted to the front
- *  with a fresh `lastOpenedAt`, so it is a history — not a list of what is
- *  open now. treating it as the latter is what made every document look
- *  ambiguous. */
+ *  a history, not a list of what is open now: it is capped at ten and the open
+ *  document is unshifted to the front with a fresh `lastOpenedAt`. */
 export interface RecentEntry {
   handle: string | null;
   filename: string;

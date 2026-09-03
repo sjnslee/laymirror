@@ -1,5 +1,5 @@
-// cardmirror's sanctioned plugin surface (api v1). shapes read off the
-// shipped renderer bundle's registration validator.
+// cardmirror's sanctioned plugin surface (api v1), read off the shipped
+// renderer bundle's registration validator.
 
 import { storageKey } from './cardmirror.js';
 
@@ -40,11 +40,9 @@ type Register = (def: PluginDefinition) => void;
 
 /** the same api, minus the parts only cardmirror can provide.
  *
- *  the real object is built at registration and handed only to a command's
- *  `run()`, so this stands in until one runs: it reads and writes the identical
- *  storage bag, and its toast goes to the console because there is no reaching
- *  cardmirror's. a document is watched from the moment laymirror loads, and the
- *  first command upgrades the session to the real thing. */
+ *  cardmirror hands the real object only to a command's `run()`, so this stands
+ *  in until one runs — same storage bag, toasts to the console. a document is
+ *  watched from the moment laymirror loads, and the first command upgrades it. */
 export function bootApi(pluginId: string): PluginApi {
   const key = storageKey(pluginId);
   const bag = (): Record<string, unknown> => {

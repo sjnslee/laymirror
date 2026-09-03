@@ -1,16 +1,11 @@
 // what laymirror remembers between sessions.
 //
-// templates are kept as a library rather than one at a time, because two
-// schools' documents can be open at once and a single slot would make the
-// second one silently wear the first one's format. a document keeps the
-// template it was marked with; a document that has never had one adopts
-// whichever was used last.
+// templates are a library rather than one slot: two documents off two templates
+// can be open at once. a document keeps the template it was marked with; one
+// that has never had a template adopts whichever was used last.
 //
-// the template is stored as the file — cardmirror hands a plugin a json
-// storage bag backed by localStorage, so the bytes travel as base64. a school
-// template is tens of kilobytes; one carrying a crest is a few hundred. the
-// cap is here so a user who picks a 20mb file is told why it was refused
-// rather than watching the bag silently fail to write.
+// cardmirror's storage bag is json in localStorage, so the file travels as
+// base64 and the cap below is what turns a silent quota failure into a message.
 
 import type { PluginApi } from './host/plugin-api.js';
 import type { Values } from './docx/fields.js';
@@ -21,8 +16,7 @@ const LAST_TEMPLATE = 'lastTemplate';
 const DEFAULTS = 'defaults';
 const DOCS = 'docs';
 
-/** roughly a fifth of a chromium origin's localStorage, and far more than any
- *  real template needs. */
+/** roughly a fifth of a chromium origin's localStorage */
 export const TEMPLATE_LIMIT = 2_000_000;
 
 export interface DocState {
@@ -141,9 +135,8 @@ export function store(api: PluginApi): Store {
 
     setValues(key, templateId, values) {
       this.setDoc(key, { values });
-      // the next document off the same template starts where this one ended:
-      // a team code and a cutter's name are the same all season. merged rather
-      // than replaced, so setting one field does not forget the others.
+      // the next document off the same template starts where this one ended.
+      // merged rather than replaced, so setting one field keeps the others.
       if (!templateId) return;
       const shared = asValues(defaults()[templateId]);
       api.storage.set(DEFAULTS, { ...defaults(), [templateId]: { ...shared, ...values } });

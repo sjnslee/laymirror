@@ -1,10 +1,10 @@
 # laymirror
 
 lay debate is slower, printed, and judged by a parent. so a lay file is a
-*document*: it has the school's header on every page, the school's fonts, one
-speech per page, and it has to come off the printer looking like the school's
-other files. cardmirror is built for the other kind of debate, where none of
-that is true.
+*document*: a header on every page, the template's fonts, one speech per page,
+and it has to come off the printer looking like every other file the squad
+hands out. cardmirror is built for the other kind of debate, where none of that
+is true.
 
 laymirror is the difference.
 
@@ -50,7 +50,7 @@ cardmirror saves ──► watcher sees the mtime move ──► read the file
                                                         │
        template ──► blueprint ──► apply ◄────────────────┘
                                     │
-                                    ├─ remap cardmirror's style ids onto the school's
+                                    ├─ remap cardmirror's style ids onto the template's
                                     ├─ restore styles, theme, fonts, numbering, header, footer
                                     ├─ restore the section: page size, margins, header refs
                                     ├─ fill the header fields with what the user typed
@@ -68,7 +68,7 @@ load their template again.
 parts are carried **verbatim**. an earlier design parsed the template into a
 model and re-emitted it, which silently dropped every property nobody remembered
 to parse: `smallCaps`, thick underlines, borders. bytes cannot forget, and they
-carry a school's crest as readily as its fonts.
+carry a crest as readily as a font.
 
 what travels: `styles.xml`, `theme1.xml`, `fontTable.xml`, `numbering.xml`,
 every header and footer, everything those headers and footers relate to (their
@@ -79,14 +79,14 @@ part word never reads, and `asciiTheme="minorHAnsi"` would resolve to nothing.
 
 it is also authoritative every time. an earlier version asked whether word had
 written the file and adopted its header if so, which made the header something
-you edited in word and laymirror preserved. that is backwards for a squad: the
-school's header is fixed, and the two or three words inside it that change are
-typed into laymirror's panel.
+you edited in word and laymirror preserved. that is backwards: the template's
+header is fixed, and the two or three words inside it that change are typed into
+laymirror's panel.
 
 ## header fields
 
-a school header is fixed except for a school name, a year, a file title and a
-cutter's name. laymirror finds those inside the school's own header rather than
+a header is fixed except for a team name, a year, a file title and a cutter's
+name. laymirror finds those inside the template's own header rather than
 building one:
 
 - **marked** — the template wraps each placeholder in a zero-width character.
@@ -122,7 +122,7 @@ into a bare `\n` inside a text node and its exporter writes every `\n` back as
 `<w:br/>`, so the type is gone. `<w:pageBreakBefore/>` in a paragraph's own
 `pPr` is dropped by both.
 
-what survives is the **style**. a lay template says `w:pageBreakBefore` on
+what survives is the **style**. a lay template puts `w:pageBreakBefore` on
 heading 1, so every pocket starts a page — and because it is a property of the
 style, it travels inside the `styles.xml` laymirror carries, and word honours
 it. nobody types a page break in a lay file; the template does it, and laymirror

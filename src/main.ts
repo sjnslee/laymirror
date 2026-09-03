@@ -1,13 +1,9 @@
 // laymirror — lay debate documents for cardmirror.
 //
-// cardmirror's exporter rebuilds the .docx from scratch on every save and
-// keeps no header, footer or theme. laymirror watches the file, and every time
-// the exporter runs it puts the school's document back on: the template's
-// styles, fonts, page setup and header, with the user's own words filled into
-// the header's editable text.
-//
-// off-state leaves the file alone. a document that has never been turned on is
-// read once to see whether it carries the marker, and never written.
+// cardmirror's exporter rebuilds the .docx from scratch on every save and keeps
+// no header, footer or theme. laymirror watches the file and puts the template
+// back on afterwards: styles, fonts, page setup and header, with the user's own
+// words in the header's editable text.
 
 import { applyTemplate } from './docx/apply.js';
 import { clearMarker, readMarker } from './docx/marker.js';
@@ -37,20 +33,17 @@ import {
 
 const ID = 'laymirror';
 
-/** how often laymirror notices the user has switched documents. cheap: a
- *  string compare against the filename chip, and nothing else unless it moved. */
+/** how often laymirror notices the user has switched documents */
 const SYNC_MS = 1500;
 
 let watcher: Watcher | null = null;
 let watching: string | null = null;
 let syncing: ReturnType<typeof setInterval> | null = null;
-/** parsing a template is a few milliseconds of unzip; a save should not pay
- *  for it twice. */
+/** parsing a template is a few ms of unzip; a save should not pay for it twice */
 const blueprints = new Map<string, Blueprint>();
 
-/** documents are keyed by name rather than by path: a path can be missing
- *  while the document is plainly open, and losing the key would lose the
- *  template and the header values with it. */
+/** keyed by name, not path: a path can be missing while the document is open,
+ *  and losing the key would lose the template and the header values with it. */
 const docKey = (): string | null => currentFilename();
 
 function blueprintFor(bag: Store, templateId: string | null): Blueprint | null {
@@ -66,9 +59,7 @@ function blueprintFor(bag: Store, templateId: string | null): Blueprint | null {
   return result.blueprint;
 }
 
-/** the template this document should wear: its own, or — for a document that
- *  has never had one — whichever was loaded last, which is nearly always the
- *  right guess. */
+/** this document's template, or — when it has never had one — the last loaded */
 const templateIdFor = (bag: Store, key: string | null): string | null =>
   bag.doc(key).templateId ?? bag.lastTemplateId();
 
@@ -94,19 +85,12 @@ function locate(api: PluginApi): Located {
 
 let last: Outcome | null = null;
 
-/** main serves `readFileAtPath` only for `.cmir` and `.docx`, so a `.docm` or
- *  `.dotx` template — which is most of them — can never be read back from its
- *  path. those keep working from the stored copy; re-loading the template is
- *  how they pick up an edit. */
+/** cardmirror serves `readFileAtPath` only for `.cmir` and `.docx`, so a
+ *  `.docm` or `.dotx` template can only ever come from the stored copy. */
 const REREADABLE = /\.docx$/i;
 
-/** go back to the template file the user picked and take it again, so an edit
- *  made in word since it was loaded is picked up.
- *
- *  false when there is no path, the format cannot be read back, the file has
- *  moved, or what came back does not parse — in every one of those the stored
- *  copy is still good, and refusing to apply would be worse than applying the
- *  version we already had. */
+/** take the template file again, so an edit made in word since it was loaded is
+ *  picked up. false falls back to the stored copy, which is still good. */
 async function reread(bag: Store, templateId: string): Promise<boolean> {
   const template = bag.template(templateId);
   if (!template?.path || !REREADABLE.test(template.path)) return false;
@@ -122,11 +106,9 @@ async function reread(bag: Store, templateId: string): Promise<boolean> {
   return true;
 }
 
-/** put the school's document onto the file on disk.
- *
- *  every failure is recorded and returned rather than swallowed: laymirror
- *  writes a file nobody is looking at, so a silent no-op and a working plugin
- *  are indistinguishable from inside cardmirror. */
+/** put the template onto the file on disk. every failure is recorded rather
+ *  than swallowed: laymirror writes a file nobody is looking at, so a silent
+ *  no-op and a working plugin look the same from inside cardmirror. */
 async function apply(api: PluginApi, fresh = false): Promise<Outcome> {
   const bag = store(api);
   const key = docKey();
@@ -135,9 +117,8 @@ async function apply(api: PluginApi, fresh = false): Promise<Outcome> {
   if (!key) return record({ ok: false, why: 'no document is open' });
   if (!templateId) return record({ ok: false, why: 'no template loaded — load one first' });
 
-  // asked for by hand: go back to the file first. a background save does not,
-  // because the template does not change between two keystrokes and an unzip
-  // per save is a cost with nothing to show for it
+  // asked for by hand: go back to the file first. a background save does not —
+  // the template does not change between two keystrokes
   const source: Source = fresh && (await reread(bag, templateId)) ? 'file' : 'stored';
 
   const blueprint = blueprintFor(bag, templateId);
@@ -187,13 +168,12 @@ async function applyAndReport(api: PluginApi, done: string, fresh = true): Promi
   return outcome.ok;
 }
 
-/** cardmirror has just rebuilt the file from scratch, so put the school's
- *  document back onto it. */
+/** cardmirror has just rebuilt the file from scratch, so put the template back */
 async function onSaved(api: PluginApi): Promise<void> {
   if (!store(api).doc(docKey()).on) return;
   const outcome = await apply(api);
   // a read that caught the file half-written is not worth shouting about: the
-  // next save lands on a whole file. everything else the user needs to know.
+  // next save lands on a whole file
   if (!outcome.ok && !/not a complete docx/.test(outcome.why)) {
     api.showToast(`laymirror: ${outcome.why}`);
   }
@@ -237,24 +217,17 @@ async function withOpenDocx(
 
 // ── keeping the watcher on the right document ─────────────────────────
 
-/** how many ticks a document gets to become reachable before laymirror stops
- *  reading it. cardmirror fills its recent-files history a moment after the
- *  document appears, so the first attempt often misses — but a `.cmir`, which
- *  never becomes reachable, must not cost a file read every 1.5 seconds. */
+/** how many ticks a document gets to become reachable. cardmirror fills its
+ *  recent-files history a moment late, so the first attempt often misses — but
+ *  a `.cmir` never becomes reachable and must not cost a read every tick. */
 const ADOPT_TRIES = 4;
 
-/** document keys whose marker has been read, or given up on. a key is added
- *  before the read rather than after, because a tick can fire while the last
- *  one is still awaiting. */
+/** keys whose marker has been read, or given up on. added before the read, not
+ *  after: a tick can fire while the last one is still awaiting. */
 const adopted = new Map<string, number>();
 
 /** a document carrying laymirror's marker turns itself on. the marker travels
- *  inside the .docx, so a file a teammate marked arrives already lay — which is
- *  the whole reason it is in the file rather than in this machine's storage.
- *
- *  a document we could not reach is retried for a few ticks: cardmirror fills
- *  its recent-files history a moment after the document appears, and giving up
- *  on that moment would leave the file plain. */
+ *  inside the .docx, so a file a teammate marked arrives already lay. */
 async function adopt(api: PluginApi, key: string): Promise<void> {
   const tries = (adopted.get(key) ?? 0) + 1;
   adopted.set(key, tries);
@@ -312,9 +285,8 @@ function sync(api: PluginApi): void {
   else watcher?.stop();
 }
 
-/** the api the background session runs on. it starts as the stand-in and is
- *  upgraded the first time a command hands us cardmirror's own — which is what
- *  turns the console messages into toasts. */
+/** the api the background session runs on: the stand-in until a command hands
+ *  us cardmirror's own, which is what turns console messages into toasts. */
 let session: PluginApi = bootApi(ID);
 
 function ensureSession(api: PluginApi): void {
@@ -346,15 +318,14 @@ async function toggleLay(api: PluginApi): Promise<void> {
     return;
   }
 
-  // no template yet is the expected first step, not a failure worth a red line
-  // in the panel — the menu has just opened out with the load button in it
+  // no template yet is the expected first step, not a failure
   if (!bag.template(templateIdFor(bag, key))) {
     api.showToast('lay formatting on — load a template next');
     return;
   }
 
-  // apply straight away rather than waiting for a save: turning it on and
-  // seeing nothing change is indistinguishable from it not having worked
+  // apply now rather than at the next save: turning it on and seeing nothing
+  // change looks the same as it not having worked
   await applyAndReport(api, 'lay formatting on — template applied');
 }
 
@@ -377,9 +348,8 @@ async function loadTemplate(api: PluginApi): Promise<void> {
   const id = `template:${picked.name}`;
   bag.addTemplate({ id, name: picked.name, path: picked.handle ?? null, docx: picked.bytes });
 
-  // cardmirror's storage bag swallows a failed localStorage write, so a
-  // template too big for the quota looks loaded until the next launch, when it
-  // is simply gone. read it back rather than trust the write
+  // the storage bag swallows a failed localStorage write, so a template over
+  // quota looks loaded until the next launch. read it back rather than trust it
   if (!bag.template(id)) {
     api.showToast(`${picked.name} is too large for cardmirror to keep — laymirror needs a smaller template`);
     return;
@@ -393,8 +363,7 @@ async function loadTemplate(api: PluginApi): Promise<void> {
   const fields = result.blueprint.fields.length;
   const found = `${picked.name} — ${fields} header field${fields === 1 ? '' : 's'}`;
 
-  // a template loaded onto a document that is already lay applies now. waiting
-  // for the next save is what made loading a template look like it did nothing
+  // waiting for the next save is what made loading a template look like a no-op
   if (key && bag.doc(key).on) {
     await applyAndReport(api, `${found}, applied`);
     return;
@@ -428,8 +397,7 @@ function openLaymirror(api: PluginApi): void {
     outcome: () => last,
     onToggle: () => toggleLay(api),
     onLoadTemplate: () => loadTemplate(api),
-    // typing is saved as it happens, so ⌘S picks up what is on screen without
-    // the user having to press apply first
+    // saved as typed, so a plain ⌘S picks up what is on screen
     onChange: (values) => {
       const key = docKey();
       if (key) bag().setValues(key, templateIdFor(bag(), key), values);
@@ -452,9 +420,8 @@ register({
       id: `${ID}.panel`,
       label: 'laymirror: open',
       keywords: ['lay', 'debate', 'template', 'header', 'settings'],
-      // a plugin cannot put itself on the ribbon, so it had better arrive with
-      // a key already bound. the alt chord is a fallback for a cardmirror that
-      // has already taken the first.
+      // a plugin cannot put itself on the ribbon, so it arrives with a key
+      // bound. the alt chord is a fallback when cardmirror has taken the first.
       defaultKey: ['Mod-Shift-l', 'Mod-Alt-l'],
       run: (api) => openLaymirror(api),
     },
@@ -485,8 +452,7 @@ register({
   ],
 }) || console.warn('[laymirror] __registerCardMirrorPlugin unavailable');
 
-// watch from the moment the script loads. cardmirror only hands a plugin its
-// api inside a command's run(), so waiting for one would mean a document that
-// was lay yesterday sat there doing nothing until the user opened the panel —
-// and "press save and the school's document comes back" is the whole feature.
+// watch from the moment the script loads. cardmirror only hands a plugin its api
+// inside a command's run(), so waiting for one would leave a document that was
+// lay yesterday doing nothing until the user opened the panel.
 ensureSession(session);
