@@ -134,6 +134,11 @@ const CSS = `
 }
 #${PANEL_ID} button.lm-close:hover { color: var(--pmd-c-danger, #c00) }
 #${PANEL_ID} button[disabled] { opacity: .5; cursor: default }
+/* an inset wash darkens whatever the button's own background is, so the plain
+   and the accent button both read as pressed */
+#${PANEL_ID} button:active:not([disabled]) {
+  box-shadow: inset 0 0 0 99px var(--pmd-c-button-press, rgba(0, 0, 0, .15));
+}
 #${PANEL_ID} .lm-actions {
   display: flex;
   flex-wrap: wrap;
@@ -142,10 +147,18 @@ const CSS = `
   padding-top: 12px;
   border-top: 1px solid var(--pmd-c-divider, #e0e0e0);
 }
+@keyframes lm-flash {
+  from { background: var(--pmd-c-accent-soft, rgba(37, 99, 235, .12)) }
+  to { background: transparent }
+}
+#${PANEL_ID} .lm-flash { animation: lm-flash .7s ease-out }
 `;
 
 let host: PanelHost | null = null;
 let onKey: ((event: KeyboardEvent) => void) | null = null;
+/** the outcome the panel last drew, so a new one is flashed rather than quietly
+ *  swapped in under the button that caused it. */
+let shown: Outcome | null = null;
 
 export const isOpen = (): boolean => document.getElementById(PANEL_ID) !== null;
 
@@ -156,14 +169,35 @@ export function closePanel(): void {
   }
   document.getElementById(PANEL_ID)?.remove();
   host = null;
+  shown = null;
 }
 
-function button(label: string, run: () => void, primary = false): HTMLButtonElement {
+/** an action can take a file read and a write, and none of it shows up in the
+ *  editor — so the button itself has to say it was pressed and is still busy. */
+async function press(el: HTMLButtonElement, run: () => void | Promise<void>): Promise<void> {
+  if (el.disabled) return;
+  const label = el.textContent ?? '';
+  el.disabled = true;
+  el.textContent = '…';
+  try {
+    await run();
+  } finally {
+    el.disabled = false;
+    el.textContent = label;
+    refresh();
+  }
+}
+
+function button(
+  label: string,
+  run: () => void | Promise<void>,
+  primary = false,
+): HTMLButtonElement {
   const el = document.createElement('button');
   el.type = 'button';
   el.textContent = label;
   if (primary) el.className = 'lm-primary';
-  el.addEventListener('click', run);
+  el.addEventListener('click', () => void press(el, run));
   return el;
 }
 
@@ -214,7 +248,7 @@ export function refresh(): void {
   lay.append(
     row(
       it.on() ? 'lay formatting is on' : 'lay formatting is off',
-      button(it.on() ? 'turn off' : 'turn on', () => void act(() => it.onToggle()), !it.on()),
+      button(it.on() ? 'turn off' : 'turn on', () => it.onToggle(), !it.on()),
     ),
   );
   body.append(lay);
@@ -237,7 +271,7 @@ export function refresh(): void {
   const template = document.createElement('section');
   const name = it.templateName();
   template.append(
-    row('template', button(name ? 'change…' : 'load…', () => void act(() => it.onLoadTemplate()))),
+    row('template', button(name ? 'change…' : 'load…', () => it.onLoadTemplate())),
     // the path, not the name: the name is the last segment of it
     note(name ? (it.templatePath() ?? name) : 'none loaded', name ? 'lm-path' : 'lm-note'),
   );
@@ -281,17 +315,20 @@ export function refresh(): void {
   done.append(
     row(
       'the file on disk',
-      button('apply now', () => void act(() => it.onApply(typed(inputs))), true),
+      button('apply now', () => it.onApply(typed(inputs)), true),
     ),
   );
   const outcome = it.outcome();
-  done.append(
+  const line =
     outcome === null
       ? note('nothing written yet')
       : outcome.ok
         ? note(`${outcome.template} applied at ${clock(outcome.at)}`, 'lm-done')
-        : note(outcome.why, 'lm-problem'),
-  );
+        : note(outcome.why, 'lm-problem');
+  // a write that changed nothing on screen is worth pointing at
+  if (outcome !== null && outcome !== shown) line.classList.add('lm-flash');
+  shown = outcome;
+  done.append(line);
   body.append(done);
 
   body.append(actionRow(it));
@@ -301,12 +338,10 @@ export function refresh(): void {
 function actionRow(it: PanelHost): HTMLDivElement {
   const actions = document.createElement('div');
   actions.className = 'lm-actions';
-  for (const action of it.actions) actions.append(button(action.label, () => void act(action.run)));
+  for (const action of it.actions) actions.append(button(action.label, action.run));
   return actions;
 }
 
-/** run an action, then show what it did. the panel is the only feedback
- *  surface laymirror has, so it must not go stale behind an await. */
 /** only the boxes with something in them. an empty box is not a blank header
  *  line, it is "the template's own text is fine". */
 const typed = (inputs: ReadonlyMap<string, HTMLInputElement>): Values => {
@@ -320,11 +355,6 @@ const typed = (inputs: ReadonlyMap<string, HTMLInputElement>): Values => {
 /** minutes matter, seconds do not: this answers "did that save go through?" */
 const clock = (at: number): string =>
   new Date(at).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
-
-async function act(run: () => void | Promise<void>): Promise<void> {
-  await run();
-  refresh();
-}
 
 export function openPanel(next: PanelHost): void {
   if (isOpen()) {
