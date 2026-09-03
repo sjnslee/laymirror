@@ -33,7 +33,7 @@ const CSS = `
   font: 13px/1.45 var(--pmd-ui-font, system-ui, -apple-system, sans-serif);
   box-shadow: 0 8px 32px var(--pmd-c-shadow-deep, rgba(0, 0, 0, .25));
 }
-#${ROOT_ID} h2 { margin: 0; font: 600 13px/1.4 inherit }
+#${ROOT_ID} h2 { margin: 0; font-weight: 600; font-size: 13px; line-height: 1.4 }
 #${ROOT_ID} pre {
   flex: 1;
   overflow: auto;

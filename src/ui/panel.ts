@@ -49,6 +49,7 @@ const CSS = `
   width: 320px;
   max-height: calc(100vh - 88px);
   overflow: auto;
+  box-sizing: border-box;
   padding: 12px 14px 14px;
   border: 1px solid var(--pmd-c-border-soft, #d0d0d0);
   border-radius: 4px;
@@ -59,7 +60,9 @@ const CSS = `
 }
 #${PANEL_ID} h2 {
   margin: 0;
-  font: 600 12px/1.4 inherit;
+  font-weight: 600;
+  font-size: 11px;
+  line-height: 1.4;
   text-transform: uppercase;
   letter-spacing: .06em;
   color: var(--pmd-c-text-muted, #666);
@@ -82,7 +85,7 @@ const CSS = `
   font-size: 12px;
   color: var(--pmd-c-text-muted, #666);
 }
-#${PANEL_ID} .lm-path { word-break: break-all }
+#${PANEL_ID} .lm-path { overflow-wrap: anywhere }
 #${PANEL_ID} .lm-problem { color: var(--pmd-c-error, #b00020) }
 #${PANEL_ID} .lm-done { color: var(--pmd-c-success, #16a34a) }
 #${PANEL_ID} label.lm-field { display: block; margin-top: 8px }
@@ -177,6 +180,8 @@ export function closePanel(): void {
 async function press(el: HTMLButtonElement, run: () => void | Promise<void>): Promise<void> {
   if (el.disabled) return;
   const label = el.textContent ?? '';
+  // hold the width, or a button shrinks to the ellipsis and back
+  el.style.minWidth = `${el.offsetWidth}px`;
   el.disabled = true;
   el.textContent = '…';
   try {
@@ -184,6 +189,7 @@ async function press(el: HTMLButtonElement, run: () => void | Promise<void>): Pr
   } finally {
     el.disabled = false;
     el.textContent = label;
+    el.style.minWidth = '';
     refresh();
   }
 }
