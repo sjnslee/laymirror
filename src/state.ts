@@ -24,9 +24,12 @@ export interface DocState {
   /** what the user typed into this document's header fields. */
   values: Values;
   on: boolean;
+  /** where this document was last found on disk. cardmirror's history is the
+   *  first answer; this is what stands in when it has no entry to give. */
+  path: string | null;
 }
 
-const EMPTY: DocState = { templateId: null, values: {}, on: false };
+const EMPTY: DocState = { templateId: null, values: {}, on: false, path: null };
 
 const asRecord = (value: unknown): Record<string, unknown> =>
   value && typeof value === 'object' && !Array.isArray(value)
@@ -120,6 +123,7 @@ export function store(api: PluginApi): Store {
         templateId: typeof state['templateId'] === 'string' ? state['templateId'] : null,
         values: asValues(state['values']),
         on: state['on'] === true,
+        path: typeof state['path'] === 'string' ? state['path'] : null,
       };
     },
 

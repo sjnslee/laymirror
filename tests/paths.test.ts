@@ -80,6 +80,19 @@ describe('resolveDocPath', () => {
     recents([entry('1ac.docx', null), entry('other.docx', '/docs/other.docx')]);
     showing('1ac.docx');
 
+    expect(resolveDocPath(null)).toEqual({ kind: 'none', because: 'unlisted' });
+  });
+
+  it('separates a docx with no entry from a document laymirror cannot touch', () => {
+    // cardmirror writes no history entry for a document it handed to a window
+    // it spawned, which is every open after the first. that file is still a
+    // .docx, and the user can say where it is — a .cmir never can be
+    recents([entry('other.docx', '/docs/other.docx')]);
+    showing('1ac.docx');
+    expect(resolveDocPath(null)).toEqual({ kind: 'none', because: 'unlisted' });
+
+    document.body.replaceChildren();
+    showing('case.cmir');
     expect(resolveDocPath(null)).toEqual({ kind: 'none', because: 'not-a-docx' });
   });
 
@@ -111,6 +124,6 @@ describe('resolveDocPath', () => {
   it('survives a recents list that is missing or corrupt', () => {
     localStorage.setItem(LS.recents, 'not json');
     showing('1ac.docx');
-    expect(resolveDocPath(null)).toEqual({ kind: 'none', because: 'not-a-docx' });
+    expect(resolveDocPath(null)).toEqual({ kind: 'none', because: 'unlisted' });
   });
 });

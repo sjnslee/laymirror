@@ -30,6 +30,13 @@ and is kept in `src/host/`:
 | knowing a save happened | polling `statFile` | there is no save hook |
 | the storage bag, before any command has run | `localStorage['plugin:laymirror']` | the api object arrives too late to start watching with |
 
+the history is not complete: cardmirror writes an entry for a document it loads
+in place or saves itself, and none for one it hands to a window it spawned —
+which is every open after the first, and every finder double-click. a `.docx`
+the history cannot place is not the same as a `.cmir` it never could, so the
+first asks the user where the file is through the picker and keeps the answer
+against the filename.
+
 `readFileAtPath` is scoped by the main process and serves only `.cmir` and
 `.docx`, so a template arrives through `openFile` — the os picker — which reads
 any extension and grants the path read scope on the way out. `writeFileAtPath`

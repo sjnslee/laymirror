@@ -15,14 +15,16 @@ import type { DocInfo } from './plugin-api.js';
 export type Resolved =
   | { kind: 'ok'; path: string }
   | { kind: 'ambiguous'; paths: string[] }
-  /** no document, or one laymirror cannot touch. */
-  | { kind: 'none'; because: 'no-document' | 'not-a-docx' };
+  /** no document, one laymirror cannot touch, or one cardmirror never
+   *  wrote a history entry for. */
+  | { kind: 'none'; because: 'no-document' | 'not-a-docx' | 'unlisted' };
 
 type Openable = RecentEntry & { handle: string };
 
+const DOCX = /\.docx$/i;
+
 const isDocx = (entry: RecentEntry): entry is Openable =>
-  !!entry.handle &&
-  (entry.format === 'docx' || entry.filename.toLowerCase().endsWith('.docx'));
+  !!entry.handle && (entry.format === 'docx' || DOCX.test(entry.filename));
 
 const openedAt = (entry: RecentEntry): number => entry.lastOpenedAt ?? 0;
 
@@ -34,9 +36,14 @@ export function resolveDocPath(info: DocInfo | null): Resolved {
     (entry) => entry.filename === filename && isDocx(entry),
   ) as Openable[];
 
-  // a name with no docx behind it is a .cmir, or a document never saved.
-  // guessing at another file would rewrite the wrong one.
-  if (named.length === 0) return { kind: 'none', because: 'not-a-docx' };
+  // guessing at another file would rewrite the wrong one, so a name with no
+  // docx behind it fails — but a .docx missing from the history is a different
+  // thing from a .cmir, and only the first can be rescued by asking the user
+  // where the file is. cardmirror writes an entry for a document it loads in
+  // place or saves itself; one it hands to a window it spawned gets none.
+  if (named.length === 0) {
+    return { kind: 'none', because: DOCX.test(filename) ? 'unlisted' : 'not-a-docx' };
+  }
   if (named.length === 1) return { kind: 'ok', path: named[0]!.handle };
 
   // two files really do share this name: the one opened last is the one in

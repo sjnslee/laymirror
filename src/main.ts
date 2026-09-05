@@ -10,6 +10,7 @@ import { clearMarker, readMarker } from './docx/marker.js';
 import { isDocx, unzip, zip, type Parts } from './docx/zip.js';
 import { currentFilename } from './host/cardmirror.js';
 import {
+  DOCX_FILES,
   hasFileApi,
   openFile,
   readFile,
@@ -65,18 +66,45 @@ const templateIdFor = (bag: Store, key: string | null): string | null =>
 
 type Located = { path: string } | { error: string };
 
+const UNLISTED =
+  'cardmirror has not said where this file is — press locate and point at it';
+
+/** the path each document key last resolved to, so a resolution that has not
+ *  changed does not rewrite the storage bag on every tick. */
+const knownPath = new Map<string, string>();
+
+function remember(api: PluginApi, path: string): void {
+  const key = docKey();
+  if (!key || knownPath.get(key) === path) return;
+  knownPath.set(key, path);
+  store(api).setDoc(key, { path });
+}
+
 function locate(api: PluginApi): Located {
   if (!hasFileApi()) return { error: 'laymirror only works in the desktop app' };
 
   const found = resolveDocPath(api.docInfo());
-  if (found.kind === 'ok') return { path: found.path };
+  if (found.kind === 'ok') {
+    remember(api, found.path);
+    return { path: found.path };
+  }
   if (found.kind === 'ambiguous') {
     return { error: 'two open files have this name, so laymirror cannot tell them apart' };
   }
+
+  // cardmirror's history has no entry for a document it opened into a window it
+  // spawned — which is every open after the first, and every finder
+  // double-click. the path the user pointed at once stands in for it.
+  if (found.because === 'unlisted') {
+    const held = store(api).doc(docKey()).path;
+    if (held) return { path: held };
+    return { error: UNLISTED };
+  }
+
   return {
     error:
       found.because === 'not-a-docx'
-        ? 'save this document as a .docx first'
+        ? 'this document is not a .docx — save it as one first'
         : 'no document is open',
   };
 }
@@ -371,6 +399,32 @@ async function loadTemplate(api: PluginApi): Promise<void> {
   say(`${found} — turn lay formatting on to apply it`);
 }
 
+/** cardmirror never said where this document is, so ask. the picker is also
+ *  what grants the path read scope, which is what makes the file readable at
+ *  all — a path typed in from somewhere else would not be. */
+async function locateDoc(api: PluginApi): Promise<void> {
+  const key = docKey();
+  if (!key) {
+    say('no document is open', 'problem');
+    return;
+  }
+
+  const picked = await openFile(DOCX_FILES);
+  if (!picked) return;
+
+  // a different file with the template written onto it is worse than no file
+  if (picked.name !== key) {
+    say(`that is ${picked.name}, and the open document is ${key}`, 'problem');
+    return;
+  }
+
+  knownPath.set(key, picked.handle);
+  store(api).setDoc(key, { path: picked.handle });
+  sync(api);
+  if (panelOpen()) refresh();
+  say(`${key} found`);
+}
+
 function openLaymirror(api: PluginApi): void {
   ensureSession(api);
   if (panelOpen()) {
@@ -407,7 +461,10 @@ function openLaymirror(api: PluginApi): void {
       if (key) bag().setValues(key, templateIdFor(bag(), key), values);
       await applyAndReport(api, 'template applied');
     },
-    actions: [{ label: 'diagnostics', run: () => openDiagnostics(api) }],
+    actions: [
+      { label: 'locate…', run: () => locateDoc(api) },
+      { label: 'diagnostics', run: () => openDiagnostics(api) },
+    ],
   });
 }
 
@@ -441,6 +498,15 @@ register({
       run: async (api) => {
         ensureSession(api);
         await applyAndReport(api, 'template applied');
+      },
+    },
+    {
+      id: `${ID}.locate`,
+      label: 'laymirror: point at the open document on disk',
+      keywords: ['locate', 'find', 'path', 'file', 'missing'],
+      run: async (api) => {
+        ensureSession(api);
+        await locateDoc(api);
       },
     },
     {
