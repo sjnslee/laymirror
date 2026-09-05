@@ -3,5 +3,5 @@ plugin.js
 *.tsbuildinfo
 .DS_Store
 
-# a school template, kept out of the repo
+# real templates and scratch files, kept out of the repo
 local/

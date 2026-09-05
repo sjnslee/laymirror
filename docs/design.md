@@ -1,179 +1,108 @@
-# laymirror
+# design
 
-lay debate is slower, printed, and judged by a parent. so a lay file is a
-*document*: a header on every page, the template's fonts, one speech per page,
-and it has to come off the printer looking like every other file the squad
-hands out. cardmirror is built for the other kind of debate, where none of that
-is true.
+## constraints
 
-laymirror is the difference.
+the plugin api is `docInfo()`, `showToast()`, a json storage bag, declared
+settings, and commands with key chords. it cannot reach the document, hook a
+save, add a ribbon button or add a settings page. the api object is passed only
+to a command's `run()`, too late to start a watcher from.
 
-## what cardmirror leaves us
+cardmirror's exporter rebuilds the package on every save: its own `styles.xml`,
+one hardcoded letter section at 1in margins, relationships for styles and
+settings. no header, no footer, no theme. laymirror puts those back after each
+save.
 
-a plugin is one classic script run in the renderer's main world. the sanctioned
-api is small — `docInfo()`, `showToast()`, a json storage bag, declared
-settings, and commands with default key chords. it cannot touch the document,
-cannot hook a save, cannot add a ribbon button and cannot add a settings page.
+`openExternal` takes `http(s)` and `mailto`, and `shell.openPath` is called on
+fixed directories, so no ipc channel opens a file in word.
 
-it is also only ever handed to a command's `run()`. cardmirror builds the object
-at registration and keeps it, so a plugin that waits to be given one does
-nothing at all in a session where the user opens a file and presses save — which
-is every session.
+## host internals
 
-everything else laymirror needs comes from the renderer it is running inside,
-and is kept in `src/host/`:
+`src/host/` holds what comes from the renderer rather than the api:
 
-| what | where | why it is not the api |
-| --- | --- | --- |
-| the open document's path | `pmd-recent-files` in localStorage, matched against the filename chip | `docInfo()` is null until cardmirror mints a doc id, which a word-authored `.docx` never has |
-| reading and writing the file | `window.electronAPI` | there is no file access in the plugin api |
-| knowing a save happened | polling `statFile` | there is no save hook |
-| the storage bag, before any command has run | `localStorage['plugin:laymirror']` | the api object arrives too late to start watching with |
+| what | where |
+| --- | --- |
+| open document's path | `pmd-recent-files` in localStorage, matched against the filename chip |
+| file read and write | `window.electronAPI` |
+| save detection | polling `statFile` |
+| storage bag before any command runs | `localStorage['plugin:laymirror']` |
 
-the history is not complete: cardmirror writes an entry for a document it loads
-in place or saves itself, and none for one it hands to a window it spawned —
-which is every open after the first, and every finder double-click. a `.docx`
-the history cannot place is not the same as a `.cmir` it never could, so the
-first asks the user where the file is through the picker and keeps the answer
-against the filename.
+`pmd-recent-files` gets no entry for a document cardmirror hands to a spawned
+window, which is every open after the first. an unplaceable filename is asked
+for through the picker and the answer kept against it.
 
-`readFileAtPath` is scoped by the main process and serves only `.cmir` and
-`.docx`, so a template arrives through `openFile` — the os picker — which reads
-any extension and grants the path read scope on the way out. `writeFileAtPath`
-is unscoped, and it updates cardmirror's own changed-on-disk baseline, so a
-file laymirror rewrites does not make the next cardmirror save complain.
+`readFileAtPath` is scoped to `.cmir` and `.docx`, so a template loads through
+`openFile`, the os picker, which reads any extension and grants read scope on
+the path. `writeFileAtPath` is unscoped and updates cardmirror's changed-on-disk
+baseline, so a rewrite does not make the next save complain.
 
-## the one fact everything follows from
-
-cardmirror's exporter **rebuilds the package from scratch on every save**. its
-own `styles.xml`, one hardcoded letter section with 1in margins, relationships
-for styles and settings and nothing else. no header. no footer. no theme.
-
-so laymirror is not a formatter. it is the thing that puts back what the
-exporter has just thrown away, every time the exporter runs.
+## pipeline
 
 ```
 cardmirror saves ──► watcher sees the mtime move ──► read the file
                                                         │
-       template ──► blueprint ──► apply ◄────────────────┘
+       template ──► blueprint ──► apply ◄───────────────┘
                                     │
                                     ├─ remap cardmirror's style ids onto the template's
                                     ├─ restore styles, theme, fonts, numbering, header, footer
                                     ├─ restore the section: page size, margins, header refs
-                                    ├─ fill the header fields with what the user typed
+                                    ├─ fill the header fields
                                     └─ write it back ──► resync the watcher
 ```
 
-## the template is the truth
+## template
 
-a template is stored as **the file itself**, base64 in the plugin's storage bag,
-and everything laymirror knows is derived from it on demand. an earlier design
-stored a digested profile, which meant every new thing laymirror learned to read
-— numbering, a crest in the header, a page break in a style — needed the user to
-load their template again.
+stored as the file itself, base64 in the storage bag; everything else derives
+from it on demand. parts are copied verbatim, never parsed and re-emitted.
 
-parts are carried **verbatim**. an earlier design parsed the template into a
-model and re-emitted it, which silently dropped every property nobody remembered
-to parse: `smallCaps`, thick underlines, borders. bytes cannot forget, and they
-carry a crest as readily as a font.
+carried: `styles.xml`, `theme1.xml`, `fontTable.xml`, `numbering.xml`, every
+header and footer, whatever those relate to (`.rels`, images), the body
+`sectPr`, and the attached template's basename. the theme and font table also
+need relationships, which cardmirror never writes, or `asciiTheme="minorHAnsi"`
+resolves to nothing.
 
-what travels: `styles.xml`, `theme1.xml`, `fontTable.xml`, `numbering.xml`,
-every header and footer, everything those headers and footers relate to (their
-own `.rels`, their images), the body `sectPr`, and the attached template's
-basename. word resolves the theme and font table through relationships that
-cardmirror never writes, so those are added — a theme with no relationship is a
-part word never reads, and `asciiTheme="minorHAnsi"` would resolve to nothing.
-
-it is also authoritative every time. an earlier version asked whether word had
-written the file and adopted its header if so, which made the header something
-you edited in word and laymirror preserved. that is backwards: the template's
-header is fixed, and the two or three words inside it that change are typed into
-laymirror's panel.
+the template wins on every apply. the header is fixed; the few words that change
+are typed into the panel.
 
 ## header fields
 
-a header is fixed except for a team name, a year, a file title and a cutter's
-name. laymirror finds those inside the template's own header rather than
-building one:
+editable stretches are found in the template's own header:
 
-- **marked** — the template wraps each placeholder in a zero-width character.
-  the author has said what is editable, so it wins outright: nothing else in
-  that paragraph is offered. the BCP lay template does this, with `U+200B`
-  around `School`, `26-27`, `File Title` and `Name`.
-- **inferred** — no marks anywhere, so every stretch of plain text between tabs
-  and word fields is offered instead. this is the fallback for a template whose
-  author never marked anything.
+- marked: placeholders wrapped in `U+200B`. nothing else in that paragraph is
+  offered.
+- inferred: no marks anywhere, so each stretch of plain text between tabs and
+  word fields is offered.
 
-a value is written **between** the marks, never over them, so the field is still
-there the next time the template is read and a value can be typed over. marks
-are paired in document order, and one left without a partner drops its field
-rather than shifting every field after it onto the wrong text.
+values are written between the marks, so a field survives into the next read.
+marks pair in document order; an unpaired one drops its field instead of
+shifting the rest.
 
-a word field's own decoration is excluded: " page " and " of " read as plain
-text but are not the user's to edit, and the number between them is a result
-word recomputes.
+a word field's decoration (" page ", " of ") reads as plain text and is skipped.
 
-a value lands whole in the first run it covers and the rest are emptied rather
-than removed, because the run carries the small caps. this matters more than it
-sounds: word splits a placeholder across runs on its own revision ids, so
-`26-27` arrives as `2` then `6-27`, and writing into each run separately would
-double the value.
+a value lands whole in the first run it covers and later runs are emptied rather
+than removed, since the run carries the small caps. word splits a placeholder on
+its own revision ids, so `26-27` arrives as `2` then `6-27`.
 
-discovery always runs against the pristine template, so a field keeps its
-identity after its value has been replaced, and a value can be typed over.
+discovery runs against the pristine template, so a field keeps its identity
+after its value is replaced.
 
-## page breaks are the template's job, not laymirror's
+## page breaks
 
-cardmirror's model cannot hold one. its importer turns `<w:br w:type="page"/>`
-into a bare `\n` inside a text node and its exporter writes every `\n` back as
-`<w:br/>`, so the type is gone. `<w:pageBreakBefore/>` in a paragraph's own
-`pPr` is dropped by both.
+cardmirror's importer turns `<w:br w:type="page"/>` into `\n` and its exporter
+writes `\n` back as `<w:br/>`; `<w:pageBreakBefore/>` in a paragraph's `pPr` is
+dropped by both. only the style survives, and a lay template puts
+`w:pageBreakBefore` on heading 1, which travels inside `styles.xml`.
 
-what survives is the **style**. a lay template puts `w:pageBreakBefore` on
-heading 1, so every pocket starts a page — and because it is a property of the
-style, it travels inside the `styles.xml` laymirror carries, and word honours
-it. nobody types a page break in a lay file; the template does it, and laymirror
-does nothing beyond carrying the style that says so.
+## feedback
 
-an earlier round drew those breaks in the editor as css rules and a form-feed
-overlay. it went: the rules landed in the wrong places, and a mark in an editor
-that is not paginated tells you nothing a printed page does not tell you
-better.
+no part of an apply is visible in the editor, so the panel reports the last
+write and a failure says why. header values are held as typed, so a plain ⌘S
+writes what is on screen.
 
-## no page view
+## versioned internals
 
-an earlier round rendered the package with `docx-preview` and called it page
-view. it got the header, the right-aligned `w:ptab` and the page numbers wrong,
-because it is a style renderer and not word. it went.
-
-there is no "open in word" in its place either: cardmirror's `openExternal`
-accepts `http(s)` and `mailto` and refuses everything else, and the only
-`shell.openPath` calls in its main process take fixed directories. no ipc
-channel hands an arbitrary path to the os. to see the file, open it in word.
-
-## saying what happened
-
-none of laymirror's work shows up in cardmirror. the editor keeps its own
-formatting; the header, the fonts and the page setup are on the file, and the
-file is not what is on screen. so a working plugin and a broken one look
-identical from inside the app, and every failure that returned silently read as
-the feature not existing.
-
-so: the panel says what the last write did and when, a failed write says why in
-a status line of laymirror's own — cardmirror places its toast at the mouse
-pointer, which for a message about a file write is nowhere in particular — and
-the header values are held as they are typed rather than on pressing apply, so a
-plain ⌘S writes what is on screen.
-
-## what breaks when cardmirror changes
-
-every undocumented internal is in `src/host/cardmirror.ts` and
-`src/template/styles.ts`, stamped with the version it was read against (1.3.0),
-so an upgrade breaks a test rather than a round.
-
-the sharpest edges: the export style ids (`Heading4` for a tag,
-`Style13ptBold` for a cite mark) come from its exporter; the native/legacy
-import split — which decides whether a style comes back as a tag or as an
-ordinary paragraph — comes from its parse worker; `pmd-recent-files` and
-`#doc-name-chip-text` are how a filename becomes a path; and
-`plugin:<id>` is where the storage bag lives.
+`src/host/cardmirror.ts` and `src/template/styles.ts` are stamped with the
+cardmirror version they were read against (1.3.0). export style ids (`Heading4`
+for a tag, `Style13ptBold` for a cite mark) come from its exporter; the
+native/legacy import split from its parse worker; `pmd-recent-files` and
+`#doc-name-chip-text` map a filename to a path; `plugin:<id>` is the storage
+bag.
