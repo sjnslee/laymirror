@@ -10,6 +10,7 @@ import { clearMarker, readMarker } from './docx/marker.js';
 import { isDocx, unzip, zip, type Parts } from './docx/zip.js';
 import { currentFilename } from './host/cardmirror.js';
 import {
+  DOCX_FILES,
   hasFileApi,
   openFile,
   readFile,
@@ -22,6 +23,7 @@ import { watchSaves, type Watcher } from './host/watcher.js';
 import { store, TEMPLATE_LIMIT, type Store } from './state.js';
 import { read, type Blueprint } from './template/template.js';
 import { openDiagnostics } from './ui/diagnose.js';
+import { say } from './ui/status.js';
 import {
   closePanel,
   isOpen as panelOpen,
@@ -64,18 +66,45 @@ const templateIdFor = (bag: Store, key: string | null): string | null =>
 
 type Located = { path: string } | { error: string };
 
+const UNLISTED =
+  'cardmirror has not said where this file is — press locate and point at it';
+
+/** the path each document key last resolved to, so a resolution that has not
+ *  changed does not rewrite the storage bag on every tick. */
+const knownPath = new Map<string, string>();
+
+function remember(api: PluginApi, path: string): void {
+  const key = docKey();
+  if (!key || knownPath.get(key) === path) return;
+  knownPath.set(key, path);
+  store(api).setDoc(key, { path });
+}
+
 function locate(api: PluginApi): Located {
   if (!hasFileApi()) return { error: 'laymirror only works in the desktop app' };
 
   const found = resolveDocPath(api.docInfo());
-  if (found.kind === 'ok') return { path: found.path };
+  if (found.kind === 'ok') {
+    remember(api, found.path);
+    return { path: found.path };
+  }
   if (found.kind === 'ambiguous') {
     return { error: 'two open files have this name, so laymirror cannot tell them apart' };
   }
+
+  // cardmirror's history has no entry for a document it opened into a window it
+  // spawned — which is every open after the first, and every finder
+  // double-click. the path the user pointed at once stands in for it.
+  if (found.because === 'unlisted') {
+    const held = store(api).doc(docKey()).path;
+    if (held) return { path: held };
+    return { error: UNLISTED };
+  }
+
   return {
     error:
       found.because === 'not-a-docx'
-        ? 'save this document as a .docx first'
+        ? 'this document is not a .docx — save it as one first'
         : 'no document is open',
   };
 }
@@ -161,7 +190,8 @@ function record(outcome: Outcome): Outcome {
 /** apply and say what happened. */
 async function applyAndReport(api: PluginApi, done: string, fresh = true): Promise<boolean> {
   const outcome = await apply(api, fresh);
-  api.showToast(outcome.ok ? done : `laymirror: ${outcome.why}`);
+  if (outcome.ok) say(done);
+  else say(outcome.why, 'problem');
   return outcome.ok;
 }
 
@@ -171,9 +201,7 @@ async function onSaved(api: PluginApi): Promise<void> {
   const outcome = await apply(api);
   // a read that caught the file half-written is not worth shouting about: the
   // next save lands on a whole file
-  if (!outcome.ok && !/not a complete docx/.test(outcome.why)) {
-    api.showToast(`laymirror: ${outcome.why}`);
-  }
+  if (!outcome.ok && !/not a complete docx/.test(outcome.why)) say(outcome.why, 'problem');
 }
 
 /** read the open document, hand its parts to `edit`, write it back. */
@@ -183,13 +211,13 @@ async function withOpenDocx(
 ): Promise<boolean> {
   const located = locate(api);
   if ('error' in located) {
-    api.showToast(located.error);
+    say(located.error, 'problem');
     return false;
   }
 
   const file = await readFile(located.path);
   if (!file) {
-    api.showToast('could not read the document — reopen it and try again');
+    say('could not read the document — reopen it and try again', 'problem');
     return false;
   }
 
@@ -197,12 +225,12 @@ async function withOpenDocx(
   try {
     parts = unzip(file.bytes);
   } catch {
-    api.showToast('the document is not readable as a docx right now');
+    say('the document is not readable as a docx right now', 'problem');
     return false;
   }
   // a partial read mid-save must abort, never round-trip into a write
   if (!isDocx(parts)) {
-    api.showToast('the document looks incomplete — try again in a moment');
+    say('the document looks incomplete — try again in a moment', 'problem');
     return false;
   }
 
@@ -299,7 +327,7 @@ async function toggleLay(api: PluginApi): Promise<void> {
   const bag = store(api);
   const key = docKey();
   if (!key) {
-    api.showToast('no document is open');
+    say('no document is open', 'problem');
     return;
   }
 
@@ -311,13 +339,13 @@ async function toggleLay(api: PluginApi): Promise<void> {
   if (!on) {
     await withOpenDocx(api, clearMarker);
     last = null;
-    api.showToast('lay formatting off');
+    say('lay formatting off');
     return;
   }
 
   // no template yet is the expected first step, not a failure
   if (!bag.template(templateIdFor(bag, key))) {
-    api.showToast('lay formatting on — load a template next');
+    say('lay formatting on — load a template next');
     return;
   }
 
@@ -331,13 +359,13 @@ async function loadTemplate(api: PluginApi): Promise<void> {
   if (!picked) return;
 
   if (picked.bytes.length > TEMPLATE_LIMIT) {
-    api.showToast(`${picked.name} is too large to keep as a template`);
+    say(`${picked.name} is too large to keep as a template`, 'problem');
     return;
   }
 
   const result = read(picked.bytes, picked.name);
   if (!result.ok) {
-    api.showToast(result.error);
+    say(result.error, 'problem');
     return;
   }
 
@@ -348,7 +376,10 @@ async function loadTemplate(api: PluginApi): Promise<void> {
   // the storage bag swallows a failed localStorage write, so a template over
   // quota looks loaded until the next launch. read it back rather than trust it
   if (!bag.template(id)) {
-    api.showToast(`${picked.name} is too large for cardmirror to keep — laymirror needs a smaller template`);
+    say(
+      `${picked.name} is too large for cardmirror to keep — laymirror needs a smaller template`,
+      'problem',
+    );
     return;
   }
   blueprints.set(id, result.blueprint);
@@ -365,7 +396,33 @@ async function loadTemplate(api: PluginApi): Promise<void> {
     await applyAndReport(api, `${found}, applied`);
     return;
   }
-  api.showToast(`${found} — turn lay formatting on to apply it`);
+  say(`${found} — turn lay formatting on to apply it`);
+}
+
+/** cardmirror never said where this document is, so ask. the picker is also
+ *  what grants the path read scope, which is what makes the file readable at
+ *  all — a path typed in from somewhere else would not be. */
+async function locateDoc(api: PluginApi): Promise<void> {
+  const key = docKey();
+  if (!key) {
+    say('no document is open', 'problem');
+    return;
+  }
+
+  const picked = await openFile(DOCX_FILES);
+  if (!picked) return;
+
+  // a different file with the template written onto it is worse than no file
+  if (picked.name !== key) {
+    say(`that is ${picked.name}, and the open document is ${key}`, 'problem');
+    return;
+  }
+
+  knownPath.set(key, picked.handle);
+  store(api).setDoc(key, { path: picked.handle });
+  sync(api);
+  if (panelOpen()) refresh();
+  say(`${key} found`);
 }
 
 function openLaymirror(api: PluginApi): void {
@@ -404,7 +461,10 @@ function openLaymirror(api: PluginApi): void {
       if (key) bag().setValues(key, templateIdFor(bag(), key), values);
       await applyAndReport(api, 'template applied');
     },
-    actions: [{ label: 'diagnostics', run: () => openDiagnostics(api) }],
+    actions: [
+      { label: 'locate…', run: () => locateDoc(api) },
+      { label: 'diagnostics', run: () => openDiagnostics(api) },
+    ],
   });
 }
 
@@ -438,6 +498,15 @@ register({
       run: async (api) => {
         ensureSession(api);
         await applyAndReport(api, 'template applied');
+      },
+    },
+    {
+      id: `${ID}.locate`,
+      label: 'laymirror: point at the open document on disk',
+      keywords: ['locate', 'find', 'path', 'file', 'missing'],
+      run: async (api) => {
+        ensureSession(api);
+        await locateDoc(api);
       },
     },
     {

@@ -18,24 +18,29 @@ const TEMPLATE_PATH = '/Users/x/Templates/lay.docx';
 interface Host {
   definition: PluginDefinition;
   api: PluginApi;
-  toasts: string[];
+  /** what laymirror's status line is currently showing. */
+  said: () => string;
   /** what is currently on disk at PATH. */
   disk: () => Uint8Array;
   /** rewrite the template file the user picked, as editing it in word would. */
   editTemplate: (bytes: Uint8Array | null) => void;
+  /** what the os picker hands back next, in place of the template file. */
+  pickNext: (file: { name: string; bytes: Uint8Array; handle: string }) => void;
   run: (id: string) => Promise<void>;
 }
 
 let host: Host;
 
-async function boot(): Promise<Host> {
+/** `listed: false` boots with an empty pmd-recent-files, which is what
+ *  cardmirror leaves behind for a document it opened into a spawned window. */
+async function boot({ listed = true } = {}): Promise<Host> {
   document.body.replaceChildren();
   document.head.replaceChildren();
   stubStorage();
 
   let disk = makeExport();
   let templateDisk: Uint8Array | null = makeTemplate();
-  const toasts: string[] = [];
+  let nextPick: { name: string; bytes: Uint8Array; handle: string } | null = null;
   let definition: PluginDefinition | null = null;
 
   // cardmirror's own storage is one localStorage entry per plugin, and
@@ -46,7 +51,6 @@ async function boot(): Promise<Host> {
 
   const api = {
     docInfo: () => null,
-    showToast: (message: string) => void toasts.push(message),
     storage: {
       get: (key: string) => bag()[key],
       set: (key: string, value: unknown) =>
@@ -70,11 +74,13 @@ async function boot(): Promise<Host> {
         if (path === PATH) disk = bytes;
         return undefined;
       },
-      openFile: async () => ({
-        name: 'lay.docx',
-        bytes: templateDisk ?? makeTemplate(),
-        handle: TEMPLATE_PATH,
-      }),
+      openFile: async () => {
+        const once = nextPick;
+        nextPick = null;
+        return (
+          once ?? { name: 'lay.docx', bytes: templateDisk ?? makeTemplate(), handle: TEMPLATE_PATH }
+        );
+      },
     },
   });
 
@@ -89,7 +95,9 @@ async function boot(): Promise<Host> {
   document.body.append(editor);
   localStorage.setItem(
     'pmd-recent-files',
-    JSON.stringify([{ handle: PATH, filename: '1ac.docx', format: 'docx', lastOpenedAt: 2 }]),
+    listed
+      ? JSON.stringify([{ handle: PATH, filename: '1ac.docx', format: 'docx', lastOpenedAt: 2 }])
+      : '[]',
   );
 
   vi.resetModules();
@@ -102,9 +110,10 @@ async function boot(): Promise<Host> {
   return {
     definition: definition as PluginDefinition,
     api,
-    toasts,
+    said: () => document.getElementById('laymirror-status')?.textContent ?? '',
     disk: () => disk,
     editTemplate: (bytes) => void (templateDisk = bytes),
+    pickNext: (file) => void (nextPick = file),
     run: async (id) => {
       await commands.get(id)!.run(api);
     },
@@ -161,7 +170,12 @@ describe('the panel', () => {
     expect(panel()!.textContent).toContain('lay formatting is off');
     expect(panel()!.textContent).not.toContain('the file on disk');
     expect(panel()!.querySelectorAll('input')).toHaveLength(0);
-    expect(buttons().map((b) => b.textContent)).toEqual(['×', 'turn on', 'diagnostics']);
+    expect(buttons().map((b) => b.textContent)).toEqual([
+      '×',
+      'turn on',
+      'locate\u2026',
+      'diagnostics',
+    ]);
   });
 
   it('opens the rest out once it is turned on', async () => {
@@ -185,7 +199,7 @@ describe('the panel', () => {
   it('asks for a template rather than reporting a failure', async () => {
     await host.run('laymirror.panel');
     await click('turn on');
-    expect(host.toasts).toContain('lay formatting on — load a template next');
+    expect(host.said()).toBe('lay formatting on — load a template next');
     expect(panel()!.textContent).toContain('nothing written yet');
   });
 });
@@ -241,7 +255,7 @@ describe('turning it on', () => {
   it('turns back off and leaves the file alone', async () => {
     await turnOn();
     await click('turn off');
-    expect(host.toasts).toContain('lay formatting off');
+    expect(host.said()).toBe('lay formatting off');
   });
 });
 
@@ -307,6 +321,42 @@ describe('re-reading the template', () => {
   });
 });
 
+// cardmirror writes a pmd-recent-files entry for a document it loads in place
+// or saves itself, and none at all for one it hands to a window it spawned —
+// which is every open after the first, and every finder double-click. a
+// word-authored file opened that way was reported as needing to be saved as a
+// docx, which it already was.
+describe('a document cardmirror never listed', () => {
+  beforeEach(async () => {
+    host = await boot({ listed: false });
+  });
+
+  it('says the file cannot be placed, not that it is the wrong kind', async () => {
+    await host.run('laymirror.panel');
+    await click('turn on');
+    expect(panel()!.textContent).toContain('press locate');
+  });
+
+  it('applies once the user has pointed at it', async () => {
+    await host.run('laymirror.panel');
+    await click('turn on');
+    await click('load…');
+    host.pickNext({ name: '1ac.docx', bytes: new Uint8Array(), handle: PATH });
+    await click('locate…');
+    await click('apply now');
+    expect(readText(unzip(host.disk()), 'word/header1.xml')).toContain('Team ');
+  });
+
+  it('refuses a file that is not the open document', async () => {
+    await host.run('laymirror.panel');
+    await click('turn on');
+    host.pickNext({ name: 'somebody else.docx', bytes: new Uint8Array(), handle: '/x/y.docx' });
+    await click('locate…');
+    expect(host.said()).toContain('somebody else.docx');
+    expect(panel()!.textContent).toContain('press locate');
+  });
+});
+
 describe('between documents and sessions', () => {
   const SECOND = '/Users/x/Documents/2ac.docx';
 
@@ -365,7 +415,7 @@ describe('between documents and sessions', () => {
     };
     await click('load…');
     localStorage.setItem = real;
-    expect(host.toasts.join(' ')).toContain('too large');
+    expect(host.said()).toContain('too large');
   });
 
   // laymirror rewrites the file it is pointed at, so adopting a document

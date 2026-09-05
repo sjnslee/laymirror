@@ -58,7 +58,12 @@ describe('templates', () => {
 
 describe('documents', () => {
   it('is off and untemplated until told otherwise', () => {
-    expect(store(api).doc('1ac.docx')).toEqual({ templateId: null, values: {}, on: false });
+    expect(store(api).doc('1ac.docx')).toEqual({
+      templateId: null,
+      values: {},
+      on: false,
+      path: null,
+    });
   });
 
   it('patches one field without losing the others', () => {

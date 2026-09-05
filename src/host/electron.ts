@@ -85,3 +85,6 @@ export async function openFile(
 export const WORD_FILES = [
   { name: 'Word document or template', extensions: ['docx', 'docm', 'dotx', 'dotm'] },
 ];
+
+/** pointing at the open document: cardmirror only ever has a .docx open. */
+export const DOCX_FILES = [{ name: 'Word document', extensions: ['docx'] }];
