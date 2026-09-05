@@ -18,7 +18,8 @@ const TEMPLATE_PATH = '/Users/x/Templates/lay.docx';
 interface Host {
   definition: PluginDefinition;
   api: PluginApi;
-  toasts: string[];
+  /** what laymirror's status line is currently showing. */
+  said: () => string;
   /** what is currently on disk at PATH. */
   disk: () => Uint8Array;
   /** rewrite the template file the user picked, as editing it in word would. */
@@ -35,7 +36,6 @@ async function boot(): Promise<Host> {
 
   let disk = makeExport();
   let templateDisk: Uint8Array | null = makeTemplate();
-  const toasts: string[] = [];
   let definition: PluginDefinition | null = null;
 
   // cardmirror's own storage is one localStorage entry per plugin, and
@@ -46,7 +46,6 @@ async function boot(): Promise<Host> {
 
   const api = {
     docInfo: () => null,
-    showToast: (message: string) => void toasts.push(message),
     storage: {
       get: (key: string) => bag()[key],
       set: (key: string, value: unknown) =>
@@ -102,7 +101,7 @@ async function boot(): Promise<Host> {
   return {
     definition: definition as PluginDefinition,
     api,
-    toasts,
+    said: () => document.getElementById('laymirror-status')?.textContent ?? '',
     disk: () => disk,
     editTemplate: (bytes) => void (templateDisk = bytes),
     run: async (id) => {
@@ -185,7 +184,7 @@ describe('the panel', () => {
   it('asks for a template rather than reporting a failure', async () => {
     await host.run('laymirror.panel');
     await click('turn on');
-    expect(host.toasts).toContain('lay formatting on — load a template next');
+    expect(host.said()).toBe('lay formatting on — load a template next');
     expect(panel()!.textContent).toContain('nothing written yet');
   });
 });
@@ -241,7 +240,7 @@ describe('turning it on', () => {
   it('turns back off and leaves the file alone', async () => {
     await turnOn();
     await click('turn off');
-    expect(host.toasts).toContain('lay formatting off');
+    expect(host.said()).toBe('lay formatting off');
   });
 });
 
@@ -365,7 +364,7 @@ describe('between documents and sessions', () => {
     };
     await click('load…');
     localStorage.setItem = real;
-    expect(host.toasts.join(' ')).toContain('too large');
+    expect(host.said()).toContain('too large');
   });
 
   // laymirror rewrites the file it is pointed at, so adopting a document

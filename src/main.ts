@@ -22,6 +22,7 @@ import { watchSaves, type Watcher } from './host/watcher.js';
 import { store, TEMPLATE_LIMIT, type Store } from './state.js';
 import { read, type Blueprint } from './template/template.js';
 import { openDiagnostics } from './ui/diagnose.js';
+import { say } from './ui/status.js';
 import {
   closePanel,
   isOpen as panelOpen,
@@ -161,7 +162,8 @@ function record(outcome: Outcome): Outcome {
 /** apply and say what happened. */
 async function applyAndReport(api: PluginApi, done: string, fresh = true): Promise<boolean> {
   const outcome = await apply(api, fresh);
-  api.showToast(outcome.ok ? done : `laymirror: ${outcome.why}`);
+  if (outcome.ok) say(done);
+  else say(outcome.why, 'problem');
   return outcome.ok;
 }
 
@@ -171,9 +173,7 @@ async function onSaved(api: PluginApi): Promise<void> {
   const outcome = await apply(api);
   // a read that caught the file half-written is not worth shouting about: the
   // next save lands on a whole file
-  if (!outcome.ok && !/not a complete docx/.test(outcome.why)) {
-    api.showToast(`laymirror: ${outcome.why}`);
-  }
+  if (!outcome.ok && !/not a complete docx/.test(outcome.why)) say(outcome.why, 'problem');
 }
 
 /** read the open document, hand its parts to `edit`, write it back. */
@@ -183,13 +183,13 @@ async function withOpenDocx(
 ): Promise<boolean> {
   const located = locate(api);
   if ('error' in located) {
-    api.showToast(located.error);
+    say(located.error, 'problem');
     return false;
   }
 
   const file = await readFile(located.path);
   if (!file) {
-    api.showToast('could not read the document — reopen it and try again');
+    say('could not read the document — reopen it and try again', 'problem');
     return false;
   }
 
@@ -197,12 +197,12 @@ async function withOpenDocx(
   try {
     parts = unzip(file.bytes);
   } catch {
-    api.showToast('the document is not readable as a docx right now');
+    say('the document is not readable as a docx right now', 'problem');
     return false;
   }
   // a partial read mid-save must abort, never round-trip into a write
   if (!isDocx(parts)) {
-    api.showToast('the document looks incomplete — try again in a moment');
+    say('the document looks incomplete — try again in a moment', 'problem');
     return false;
   }
 
@@ -299,7 +299,7 @@ async function toggleLay(api: PluginApi): Promise<void> {
   const bag = store(api);
   const key = docKey();
   if (!key) {
-    api.showToast('no document is open');
+    say('no document is open', 'problem');
     return;
   }
 
@@ -311,13 +311,13 @@ async function toggleLay(api: PluginApi): Promise<void> {
   if (!on) {
     await withOpenDocx(api, clearMarker);
     last = null;
-    api.showToast('lay formatting off');
+    say('lay formatting off');
     return;
   }
 
   // no template yet is the expected first step, not a failure
   if (!bag.template(templateIdFor(bag, key))) {
-    api.showToast('lay formatting on — load a template next');
+    say('lay formatting on — load a template next');
     return;
   }
 
@@ -331,13 +331,13 @@ async function loadTemplate(api: PluginApi): Promise<void> {
   if (!picked) return;
 
   if (picked.bytes.length > TEMPLATE_LIMIT) {
-    api.showToast(`${picked.name} is too large to keep as a template`);
+    say(`${picked.name} is too large to keep as a template`, 'problem');
     return;
   }
 
   const result = read(picked.bytes, picked.name);
   if (!result.ok) {
-    api.showToast(result.error);
+    say(result.error, 'problem');
     return;
   }
 
@@ -348,7 +348,10 @@ async function loadTemplate(api: PluginApi): Promise<void> {
   // the storage bag swallows a failed localStorage write, so a template over
   // quota looks loaded until the next launch. read it back rather than trust it
   if (!bag.template(id)) {
-    api.showToast(`${picked.name} is too large for cardmirror to keep — laymirror needs a smaller template`);
+    say(
+      `${picked.name} is too large for cardmirror to keep — laymirror needs a smaller template`,
+      'problem',
+    );
     return;
   }
   blueprints.set(id, result.blueprint);
@@ -365,7 +368,7 @@ async function loadTemplate(api: PluginApi): Promise<void> {
     await applyAndReport(api, `${found}, applied`);
     return;
   }
-  api.showToast(`${found} — turn lay formatting on to apply it`);
+  say(`${found} — turn lay formatting on to apply it`);
 }
 
 function openLaymirror(api: PluginApi): void {

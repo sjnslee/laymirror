@@ -11,7 +11,6 @@ export interface DocInfo {
 /** handed to a command's run(). only the members laymirror uses are typed. */
 export interface PluginApi {
   docInfo(): DocInfo | null;
-  showToast(message: string): void;
   /** persisted per plugin, json-serialised into localStorage. */
   storage: {
     get(key: string): unknown;
@@ -41,8 +40,8 @@ type Register = (def: PluginDefinition) => void;
 /** the same api, minus the parts only cardmirror can provide.
  *
  *  cardmirror hands the real object only to a command's `run()`, so this stands
- *  in until one runs — same storage bag, toasts to the console. a document is
- *  watched from the moment laymirror loads, and the first command upgrades it. */
+ *  in until one runs, over the same storage bag. a document is watched from the
+ *  moment laymirror loads, and the first command upgrades it. */
 export function bootApi(pluginId: string): PluginApi {
   const key = storageKey(pluginId);
   const bag = (): Record<string, unknown> => {
@@ -56,7 +55,6 @@ export function bootApi(pluginId: string): PluginApi {
 
   return {
     docInfo: () => null,
-    showToast: (message) => console.log(`[laymirror] ${message}`),
     storage: {
       get: (name) => bag()[name],
       set: (name, value) => {

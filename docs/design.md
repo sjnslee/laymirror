@@ -152,9 +152,11 @@ file is not what is on screen. so a working plugin and a broken one look
 identical from inside the app, and every failure that returned silently read as
 the feature not existing.
 
-so: the panel says what the last write did and when, a failed write toasts with
-the reason, and the header values are held as they are typed rather than on
-pressing apply, so a plain ⌘S writes what is on screen.
+so: the panel says what the last write did and when, a failed write says why in
+a status line of laymirror's own — cardmirror places its toast at the mouse
+pointer, which for a message about a file write is nowhere in particular — and
+the header values are held as they are typed rather than on pressing apply, so a
+plain ⌘S writes what is on screen.
 
 ## what breaks when cardmirror changes
 
