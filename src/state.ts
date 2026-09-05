@@ -62,6 +62,9 @@ export function decode(base64: string): Uint8Array {
 
 export interface Store {
   template(id: string | null): Template | null;
+  /** name and path without the bytes: decoding a template runs to megabytes of
+   *  base64, and most callers only want to say which one is loaded. */
+  templateInfo(id: string | null): { name: string; path: string | null } | null;
   addTemplate(template: Template): void;
   lastTemplateId(): string | null;
   doc(key: string | null): DocState;
@@ -97,6 +100,12 @@ export function store(api: PluginApi): Store {
       } catch {
         return null;
       }
+    },
+
+    templateInfo(id) {
+      if (!id) return null;
+      const record = held(id);
+      return record ? { name: record.name, path: record.path } : null;
     },
 
     addTemplate(template) {

@@ -22,7 +22,8 @@ interface Host {
   said: () => string;
   /** what is currently on disk at PATH. */
   disk: () => Uint8Array;
-  /** rewrite the template file the user picked, as editing it in word would. */
+  /** rewrite the template file the user picked, as editing it in word would.
+   *  null deletes it. */
   editTemplate: (bytes: Uint8Array | null) => void;
   /** what the os picker hands back next, in place of the template file. */
   pickNext: (file: { name: string; bytes: Uint8Array; handle: string }) => void;
@@ -40,6 +41,9 @@ async function boot({ listed = true } = {}): Promise<Host> {
 
   let disk = makeExport();
   let templateDisk: Uint8Array | null = makeTemplate();
+  // laymirror re-reads a template only when its mtime has moved, so the stand-in
+  // for a word edit has to move it
+  let templateMtime = 1;
   let nextPick: { name: string; bytes: Uint8Array; handle: string } | null = null;
   let definition: PluginDefinition | null = null;
 
@@ -61,7 +65,12 @@ async function boot({ listed = true } = {}): Promise<Host> {
   Object.assign(window as never, {
     __registerCardMirrorPlugin: (def: PluginDefinition) => void (definition = def),
     electronAPI: {
-      statFile: async () => ({ mtimeMs: 1, size: disk.length }),
+      statFile: async (path: string) => {
+        if (path === TEMPLATE_PATH) {
+          return templateDisk ? { mtimeMs: templateMtime, size: templateDisk.length } : null;
+        }
+        return { mtimeMs: 1, size: disk.length };
+      },
       readFileAtPath: async (path: string) => {
         if (path === PATH) return { name: '1ac.docx', bytes: disk, handle: PATH, format: 'docx' };
         // main serves .cmir and .docx only, and only paths the user put in play
@@ -77,9 +86,7 @@ async function boot({ listed = true } = {}): Promise<Host> {
       openFile: async () => {
         const once = nextPick;
         nextPick = null;
-        return (
-          once ?? { name: 'lay.docx', bytes: templateDisk ?? makeTemplate(), handle: TEMPLATE_PATH }
-        );
+        return once ?? { name: 'lay.docx', bytes: templateDisk ?? makeTemplate(), handle: TEMPLATE_PATH };
       },
     },
   });
@@ -112,7 +119,10 @@ async function boot({ listed = true } = {}): Promise<Host> {
     api,
     said: () => document.getElementById('laymirror-status')?.textContent ?? '',
     disk: () => disk,
-    editTemplate: (bytes) => void (templateDisk = bytes),
+    editTemplate: (bytes) => {
+      templateDisk = bytes;
+      templateMtime += 1;
+    },
     pickNext: (file) => void (nextPick = file),
     run: async (id) => {
       await commands.get(id)!.run(api);

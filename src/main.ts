@@ -14,6 +14,7 @@ import {
   hasFileApi,
   openFile,
   readFile,
+  statFile,
   writeFile,
   WORD_FILES,
 } from './host/electron.js';
@@ -117,27 +118,35 @@ let last: Outcome | null = null;
  *  `.docm` or `.dotx` template can only ever come from the stored copy. */
 const REREADABLE = /\.docx$/i;
 
+/** when each template file was last taken off disk. keeping a template means
+ *  re-encoding it as base64 and rewriting the whole storage bag, so an apply
+ *  that would only put back the bytes already held skips the work. */
+const takenAt = new Map<string, number>();
+
 /** take the template file again, so an edit made in word since it was loaded is
- *  picked up. false falls back to the stored copy, which is still good. */
-async function reread(bag: Store, templateId: string): Promise<boolean> {
-  const template = bag.template(templateId);
-  if (!template?.path || !REREADABLE.test(template.path)) return false;
+ *  picked up. doing nothing leaves the stored copy, which is still good. */
+async function reread(bag: Store, templateId: string): Promise<void> {
+  const info = bag.templateInfo(templateId);
+  if (!info?.path || !REREADABLE.test(info.path)) return;
 
-  const file = await readFile(template.path);
-  if (!file) return false;
+  const stat = await statFile(info.path).catch(() => null);
+  if (stat && takenAt.get(templateId) === stat.mtimeMs) return;
 
-  const result = read(file.bytes, template.name);
-  if (!result.ok) return false;
+  const file = await readFile(info.path);
+  if (!file) return;
 
-  bag.addTemplate({ ...template, docx: file.bytes });
+  const result = read(file.bytes, info.name);
+  if (!result.ok) return;
+
+  bag.addTemplate({ id: templateId, name: info.name, path: info.path, docx: file.bytes });
   blueprints.set(templateId, result.blueprint);
-  return true;
+  if (stat) takenAt.set(templateId, stat.mtimeMs);
 }
 
 /** put the template onto the file on disk. every failure is recorded rather
  *  than swallowed: laymirror writes a file nobody is looking at, so a silent
  *  no-op and a working plugin look the same from inside cardmirror. */
-async function apply(api: PluginApi, fresh = false): Promise<Outcome> {
+async function applyOnce(api: PluginApi, fresh = false): Promise<Outcome> {
   const bag = store(api);
   const key = docKey();
   const templateId = templateIdFor(bag, key);
@@ -173,11 +182,22 @@ async function apply(api: PluginApi, fresh = false): Promise<Outcome> {
     return record({
       ok: true,
       at: Date.now(),
-      template: bag.template(templateId)?.name ?? templateId,
+      template: bag.templateInfo(templateId)?.name ?? templateId,
     });
   } catch (err) {
     return record({ ok: false, why: err instanceof Error ? err.message : String(err) });
   }
+}
+
+/** one apply at a time. a save landing while the button's apply is still
+ *  running had both of them reading the same file and writing it twice, and
+ *  whichever finished last decided what the panel said. */
+let queue: Promise<unknown> = Promise.resolve();
+
+function apply(api: PluginApi, fresh = false): Promise<Outcome> {
+  const next = queue.then(() => applyOnce(api, fresh));
+  queue = next.catch(() => undefined);
+  return next;
 }
 
 function record(outcome: Outcome): Outcome {
@@ -344,7 +364,7 @@ async function toggleLay(api: PluginApi): Promise<void> {
   }
 
   // no template yet is the expected first step, not a failure
-  if (!bag.template(templateIdFor(bag, key))) {
+  if (!bag.templateInfo(templateIdFor(bag, key))) {
     say('lay formatting on — load a template next');
     return;
   }
@@ -375,7 +395,7 @@ async function loadTemplate(api: PluginApi): Promise<void> {
 
   // the storage bag swallows a failed localStorage write, so a template over
   // quota looks loaded until the next launch. read it back rather than trust it
-  if (!bag.template(id)) {
+  if (!bag.templateInfo(id)) {
     say(
       `${picked.name} is too large for cardmirror to keep — laymirror needs a smaller template`,
       'problem',
@@ -383,6 +403,10 @@ async function loadTemplate(api: PluginApi): Promise<void> {
     return;
   }
   blueprints.set(id, result.blueprint);
+  if (picked.handle) {
+    const stat = await statFile(picked.handle).catch(() => null);
+    if (stat) takenAt.set(id, stat.mtimeMs);
+  }
 
   const key = docKey();
   if (key) bag.setDoc(key, { templateId: id });
@@ -437,8 +461,8 @@ function openLaymirror(api: PluginApi): void {
 
   openPanel({
     on: () => bag().doc(docKey()).on,
-    templateName: () => bag().template(templateIdFor(bag(), docKey()))?.name ?? null,
-    templatePath: () => bag().template(templateIdFor(bag(), docKey()))?.path ?? null,
+    templateName: () => bag().templateInfo(templateIdFor(bag(), docKey()))?.name ?? null,
+    templatePath: () => bag().templateInfo(templateIdFor(bag(), docKey()))?.path ?? null,
     fields: () => template()?.fields ?? [],
     values: () => {
       const key = docKey();

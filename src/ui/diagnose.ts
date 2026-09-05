@@ -4,6 +4,7 @@
 import { currentFilename, DOC_NAME_CHIP, LS, storageKey } from '../host/cardmirror.js';
 import { resolveDocPath } from '../host/paths.js';
 import type { PluginApi } from '../host/plugin-api.js';
+import { store } from '../state.js';
 
 const ROOT_ID = 'laymirror-diagnose';
 const STYLE_ID = 'laymirror-diagnose-style';
@@ -108,6 +109,8 @@ function collect(api: PluginApi): Line[] {
 
   add('api.docInfo()', api.docInfo());
   add('resolveDocPath()', resolveDocPath(api.docInfo()));
+  // what stands in when the history has no entry to give
+  add('path the user pointed at', store(api).doc(currentFilename()).path);
 
   // the bag laymirror reads before any command has run, and therefore the one
   // that decides whether a plain save is picked up at all
