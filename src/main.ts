@@ -146,7 +146,7 @@ async function reread(bag: Store, templateId: string): Promise<void> {
 /** put the template onto the file on disk. every failure is recorded rather
  *  than swallowed: laymirror writes a file nobody is looking at, so a silent
  *  no-op and a working plugin look the same from inside cardmirror. */
-async function apply(api: PluginApi, fresh = false): Promise<Outcome> {
+async function applyOnce(api: PluginApi, fresh = false): Promise<Outcome> {
   const bag = store(api);
   const key = docKey();
   const templateId = templateIdFor(bag, key);
@@ -187,6 +187,17 @@ async function apply(api: PluginApi, fresh = false): Promise<Outcome> {
   } catch (err) {
     return record({ ok: false, why: err instanceof Error ? err.message : String(err) });
   }
+}
+
+/** one apply at a time. a save landing while the button's apply is still
+ *  running had both of them reading the same file and writing it twice, and
+ *  whichever finished last decided what the panel said. */
+let queue: Promise<unknown> = Promise.resolve();
+
+function apply(api: PluginApi, fresh = false): Promise<Outcome> {
+  const next = queue.then(() => applyOnce(api, fresh));
+  queue = next.catch(() => undefined);
+  return next;
 }
 
 function record(outcome: Outcome): Outcome {
