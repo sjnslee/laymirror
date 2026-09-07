@@ -10,11 +10,11 @@
 
 import { fillFields, type Values } from './fields.js';
 import { writeMarker } from './marker.js';
-import { restoreSnapshot } from './snapshot.js';
+import { EMPTY_RELS, restoreSnapshot } from './snapshot.js';
 import { headerParts, type Blueprint } from '../template/template.js';
 import { EXPORT_STYLE_BY_TYPE } from '../template/styles.js';
-import { parseXml, serializeXml } from './xml.js';
-import { isDocx, readText, strToBytes, unzip, writeText, zip, type Parts } from './zip.js';
+import { elements, parseXml, serializeXml } from './xml.js';
+import { isDocx, readText, unzip, writeText, zip, type Parts } from './zip.js';
 
 const DOCUMENT = 'word/document.xml';
 const SETTINGS = 'word/settings.xml';
@@ -36,13 +36,6 @@ function directChild(parent: Element, tag: string): Element | null {
     if (node?.nodeType === 1 && (node as Element).tagName === tag) return node as Element;
   }
   return null;
-}
-
-function elements(parent: Element, tag: string): Element[] {
-  const found = parent.getElementsByTagName(tag);
-  const out: Element[] = [];
-  for (let i = 0; i < found.length; i++) out.push(found.item(i)!);
-  return out;
 }
 
 function setPStyle(doc: Document, paragraph: Element, styleId: string): void {
@@ -116,11 +109,6 @@ function applyStyles(documentXml: string, blueprint: Blueprint): string {
   return serializeXml(doc);
 }
 
-const EMPTY_RELS =
-  '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\r\n' +
-  '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">' +
-  '</Relationships>';
-
 /** word matches an attached template by basename out of the user's templates
  *  folder, so a basename is both the safe target and the working one. */
 function pointAttachedTemplate(parts: Parts, template: string | null): void {
@@ -176,11 +164,7 @@ export function applyTemplate(
   if (!documentXml) throw new Error('document.xml is unreadable');
   writeText(parts, DOCUMENT, applyStyles(documentXml, blueprint));
 
-  const filled = fillFields(headerParts(blueprint.snapshot), values);
-  const override: Record<string, Uint8Array> = {};
-  for (const [name, xml] of Object.entries(filled)) override[name] = strToBytes(xml);
-
-  restoreSnapshot(parts, blueprint.snapshot, override);
+  restoreSnapshot(parts, blueprint.snapshot, fillFields(headerParts(blueprint.snapshot), values));
   pointAttachedTemplate(parts, blueprint.snapshot.attachedTemplate);
   writeMarker(parts, templateId);
 

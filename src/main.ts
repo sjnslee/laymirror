@@ -224,21 +224,18 @@ async function onSaved(api: PluginApi): Promise<void> {
   if (!outcome.ok && !/not a complete docx/.test(outcome.why)) say(outcome.why, 'problem');
 }
 
-/** read the open document, hand its parts to `edit`, write it back. */
-async function withOpenDocx(
-  api: PluginApi,
-  edit: (parts: Parts) => void,
-): Promise<boolean> {
+/** take laymirror's marker off the file, so it stops adopting itself. */
+async function unmark(api: PluginApi): Promise<void> {
   const located = locate(api);
   if ('error' in located) {
     say(located.error, 'problem');
-    return false;
+    return;
   }
 
   const file = await readFile(located.path);
   if (!file) {
     say('could not read the document — reopen it and try again', 'problem');
-    return false;
+    return;
   }
 
   let parts: Parts;
@@ -246,18 +243,17 @@ async function withOpenDocx(
     parts = unzip(file.bytes);
   } catch {
     say('the document is not readable as a docx right now', 'problem');
-    return false;
+    return;
   }
   // a partial read mid-save must abort, never round-trip into a write
   if (!isDocx(parts)) {
     say('the document looks incomplete — try again in a moment', 'problem');
-    return false;
+    return;
   }
 
-  edit(parts);
+  clearMarker(parts);
   await writeFile(located.path, zip(parts));
   await watcher?.resync();
-  return true;
 }
 
 // ── keeping the watcher on the right document ─────────────────────────
@@ -357,7 +353,7 @@ async function toggleLay(api: PluginApi): Promise<void> {
   sync(api);
 
   if (!on) {
-    await withOpenDocx(api, clearMarker);
+    await unmark(api);
     last = null;
     say('lay formatting off');
     return;
@@ -391,7 +387,7 @@ async function loadTemplate(api: PluginApi): Promise<void> {
 
   const bag = store(api);
   const id = `template:${picked.name}`;
-  bag.addTemplate({ id, name: picked.name, path: picked.handle ?? null, docx: picked.bytes });
+  bag.addTemplate({ id, name: picked.name, path: picked.handle, docx: picked.bytes });
 
   // the storage bag swallows a failed localStorage write, so a template over
   // quota looks loaded until the next launch. read it back rather than trust it
@@ -403,10 +399,8 @@ async function loadTemplate(api: PluginApi): Promise<void> {
     return;
   }
   blueprints.set(id, result.blueprint);
-  if (picked.handle) {
-    const stat = await statFile(picked.handle).catch(() => null);
-    if (stat) takenAt.set(id, stat.mtimeMs);
-  }
+  const stat = await statFile(picked.handle).catch(() => null);
+  if (stat) takenAt.set(id, stat.mtimeMs);
 
   const key = docKey();
   if (key) bag.setDoc(key, { templateId: id });

@@ -19,3 +19,11 @@ export function serializeXml(doc: Document): string {
   const xml = new XMLSerializer().serializeToString(doc);
   return DECL + xml.replace(/^\s*<\?xml\b[^?]*\?>\s*/, '');
 }
+
+/** a live HTMLCollection is awkward to iterate and changes under an edit. */
+export function elements(parent: Element, tag: string): Element[] {
+  const found = parent.getElementsByTagName(tag);
+  const out: Element[] = [];
+  for (let i = 0; i < found.length; i++) out.push(found.item(i)!);
+  return out;
+}

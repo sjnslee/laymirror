@@ -13,7 +13,6 @@ import { existsSync, readFileSync } from 'node:fs';
 import { makeExport } from './fixture.js';
 import { applyTemplate } from '../src/docx/apply.js';
 import { readText, unzip } from '../src/docx/zip.js';
-import { validateMapping } from '../src/template/styles.js';
 import { read } from '../src/template/template.js';
 
 const DONOR = 'local/lay-template.docm';
@@ -54,11 +53,6 @@ suite('a real school template', () => {
     const labels = blueprint().fields.map((field) => field.label);
     expect(labels.join(' ')).not.toMatch(/\bof\b|\bPage\b/i);
     expect(header()).toContain('NUMPAGES');
-  });
-
-  it('maps every style onto something cardmirror can read back', () => {
-    const { styles, styleMap, bareStyles } = blueprint();
-    expect(validateMapping(styles, styleMap, bareStyles)).toEqual([]);
   });
 
   it('puts the school header onto a cardmirror export', () => {

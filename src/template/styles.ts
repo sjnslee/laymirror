@@ -9,8 +9,7 @@
 //              w:name, character styles only by the id table below.
 //
 // the lay names (Tag, Cite, card, Underline) are all in the legacy table, which
-// is what makes them safe. `Style13ptBold` is not: under the legacy path a cite
-// mark is silently lost. see REQUIRED_FOR_NATIVE_PATH.
+// is what makes them safe.
 //
 // read off the shipped 1.3.0 parse worker.
 
@@ -84,19 +83,6 @@ export const LEGACY_BY_ID: Record<string, string> = {
   StyleStyleBold12pt: 'char-cite',
 };
 
-/** styleId -> mark, on the native path. */
-export const NATIVE_MARK_BY_ID: Record<string, RunType> = {
-  StyleUnderline: 'underline_mark',
-  Underline: 'underline_mark',
-  StyleBoldUnderline: 'underline_mark',
-  Style13ptBold: 'cite_mark',
-  StyleStyleBold12pt: 'cite_mark',
-  Cite: 'cite_mark',
-  Emphasis: 'emphasis_mark',
-  UndertagChar: 'undertag_mark',
-  AnalyticChar: 'analytic_mark',
-};
-
 /** what cardmirror's *exporter* writes for each type — not the same question as
  *  what its importer reads back. `null` means no `w:pStyle` at all, so a cite
  *  paragraph and a card body have to be recognised from their runs instead.
@@ -118,88 +104,12 @@ export const EXPORT_STYLE_BY_TYPE: Record<BlockType | RunType, string | null> = 
   analytic_mark: 'AnalyticChar',
 };
 
-/** the same table read the other way, for turning an export back into types. */
-export const TYPE_BY_EXPORT_STYLE: Record<string, BlockType | RunType> = Object.fromEntries(
-  Object.entries(EXPORT_STYLE_BY_TYPE)
-    .filter((entry): entry is [BlockType | RunType, string] => entry[1] !== null)
-    .map(([type, styleId]) => [styleId, type]),
-);
-
-/** cardmirror calls a document one of its own when its styles contain all three,
- *  matched by id or name. they are what keep cite and underline marks alive
- *  through a round-trip, and they cost nothing in word. */
-export const REQUIRED_FOR_NATIVE_PATH: readonly (readonly string[])[] = [
-  ['Style13ptBold', 'Style 13 pt Bold'],
-  ['StyleUnderline', 'Style Underline'],
-  ['Emphasis'],
-];
-
-export function takesNativePath(styleIds: Iterable<string>, styleNames: Iterable<string>): boolean {
-  const ids = new Set(styleIds);
-  const names = new Set(styleNames);
-  return REQUIRED_FOR_NATIVE_PATH.every((group) =>
-    group.some((s) => ids.has(s) || names.has(s)),
-  );
-}
-
-export interface MappingWarning {
-  styleId: string;
-  styleName: string;
-  message: string;
-}
-
-/** warn where a mapping will not survive the trip home: a template style in
- *  neither table exports perfectly into word and comes back as an ordinary
- *  paragraph. */
-export function validateMapping(
-  styles: readonly StyleInfo[],
-  styleMap: Record<string, string>,
-  bareStyles: BareStyles,
-): MappingWarning[] {
-  const byId = new Map(styles.map((style) => [style.id, style]));
-  const targets = [
-    ...Object.values(styleMap),
-    bareStyles.cite_paragraph,
-    bareStyles.card_body,
-  ].filter((id): id is string => !!id);
-
-  // on the native path paragraph styles match by id, so any id cardmirror's own
-  // exporter emits comes back as the type it left as
-  const native = takesNativePath(
-    styles.map((style) => style.id),
-    styles.map((style) => style.name),
-  );
-
-  const warnings: MappingWarning[] = [];
-  const seen = new Set<string>();
-
-  for (const id of targets) {
-    if (seen.has(id)) continue;
-    seen.add(id);
-    const style = byId.get(id);
-    const name = style?.name ?? id;
-    // headings resolve by outline level rather than by name, so they are safe
-    if (/^Heading\d$/.test(id)) continue;
-    if (native && TYPE_BY_EXPORT_STYLE[id]) continue;
-    if (LEGACY_BY_NAME[name.toLowerCase()] || LEGACY_BY_ID[id]) continue;
-    if (NATIVE_MARK_BY_ID[id]) continue;
-    warnings.push({
-      styleId: id,
-      styleName: name,
-      message: `cardmirror does not recognise a style called "${name}", so this text comes back as an ordinary paragraph when the file is reopened`,
-    });
-  }
-
-  return warnings;
-}
-
 // ── reading a template's own styles ───────────────────────────────────
 
 export interface StyleInfo {
   id: string;
   name: string;
   kind: 'paragraph' | 'character' | 'table' | 'numbering';
-  basedOn: string | null;
 }
 
 const attr = (tag: string, name: string): string | null =>
@@ -216,7 +126,6 @@ export function readStyles(stylesXml: string): StyleInfo[] {
       id,
       name: /<w:name\b[^>]*w:val="([^"]*)"/.exec(block)?.[1] ?? id,
       kind: (attr(open, 'w:type') ?? 'paragraph') as StyleInfo['kind'],
-      basedOn: /<w:basedOn\b[^>]*w:val="([^"]*)"/.exec(block)?.[1] ?? null,
     });
   }
   return out;

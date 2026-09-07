@@ -14,7 +14,7 @@
 // discovery always runs against the pristine template, so a field keeps its
 // identity after its value has been replaced.
 
-import { parseXml, serializeXml } from './xml.js';
+import { elements, parseXml, serializeXml } from './xml.js';
 
 /** zero-width characters word will happily hold and never draw. */
 const ZERO_WIDTH = /[​‌‍⁠﻿]/;
@@ -52,13 +52,6 @@ type Break = { at: number; field: boolean };
  *  would split a header where nothing is written; `mc:Fallback` is the vml copy
  *  of a text box already given in `mc:Choice`, so it doubles every field. */
 const SKIP = new Set(['w:pPr', 'w:rPr', 'w:instrText', 'w:delText', 'mc:Fallback']);
-
-function tagged(parent: Element, tag: string): Element[] {
-  const found = parent.getElementsByTagName(tag);
-  const out: Element[] = [];
-  for (let i = 0; i < found.length; i++) out.push(found.item(i)!);
-  return out;
-}
 
 const inFallback = (node: Element): boolean => {
   for (let cursor: Node | null = node.parentNode; cursor; cursor = cursor.parentNode) {
@@ -160,7 +153,7 @@ interface Placed {
 function place(partName: string, doc: Document): Placed[] {
   const out: Placed[] = [];
 
-  tagged(doc.documentElement, 'w:p').forEach((paragraph, index) => {
+  elements(doc.documentElement, 'w:p').forEach((paragraph, index) => {
     if (inFallback(paragraph)) return;
 
     const { runs, breaks } = flatten(paragraph);

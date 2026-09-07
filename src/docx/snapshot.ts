@@ -213,7 +213,7 @@ function upsertRelationship(relsXml: string, id: string, type: string, target: s
   return relsXml.replace('</Relationships>', `${entry}</Relationships>`);
 }
 
-const EMPTY_RELS =
+export const EMPTY_RELS =
   '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\r\n' +
   '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">' +
   '</Relationships>';
@@ -226,10 +226,12 @@ const EMPTY_RELS =
 export function restoreSnapshot(
   parts: Parts,
   snapshot: Snapshot,
-  override: Record<string, Uint8Array> = {},
+  override: Record<string, string> = {},
 ): void {
   for (const [name, bytes] of Object.entries(snapshot.parts)) {
-    parts[name] = override[name] ?? bytes;
+    const filled = override[name];
+    if (filled === undefined) parts[name] = bytes;
+    else writeText(parts, name, filled);
   }
 
   let ct = readText(parts, CONTENT_TYPES);

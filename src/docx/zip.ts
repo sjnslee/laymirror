@@ -35,5 +35,3 @@ export function writeText(parts: Parts, name: string, xml: string): void {
   parts[name] = strToU8(xml);
 }
 
-export const strToBytes = (text: string): Uint8Array => strToU8(text);
-

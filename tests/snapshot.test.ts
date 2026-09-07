@@ -133,9 +133,7 @@ describe('restoreSnapshot', () => {
   it('takes an overriding part in place of the snapshot', () => {
     const parts = exported();
     const snap = snapshot();
-    restoreSnapshot(parts, snap, {
-      'word/header1.xml': new TextEncoder().encode('<w:hdr>filled</w:hdr>'),
-    });
+    restoreSnapshot(parts, snap, { 'word/header1.xml': '<w:hdr>filled</w:hdr>' });
     expect(readText(parts, 'word/header1.xml')).toBe('<w:hdr>filled</w:hdr>');
     expect(readText(snap.parts, 'word/header1.xml')).toContain('Team ');
   });

@@ -7,13 +7,7 @@
 import { findFields, type Field } from '../docx/fields.js';
 import { captureSnapshot, type Snapshot } from '../docx/snapshot.js';
 import { isDocx, readText, unzip, type Parts } from '../docx/zip.js';
-import {
-  deriveBareStyles,
-  deriveStyleMap,
-  readStyles,
-  type BareStyles,
-  type StyleInfo,
-} from './styles.js';
+import { deriveBareStyles, deriveStyleMap, readStyles, type BareStyles } from './styles.js';
 
 const STYLES = 'word/styles.xml';
 
@@ -28,7 +22,6 @@ export interface Template {
 
 export interface Blueprint {
   snapshot: Snapshot;
-  styles: StyleInfo[];
   /** cardmirror's exported style id -> the id this template defines. an id
    *  absent from the map is left as cardmirror wrote it. */
   styleMap: Record<string, string>;
@@ -66,14 +59,12 @@ export function read(bytes: Uint8Array, name: string): ReadResult {
   if (!snapshot) return { ok: false, error: `${name} has no styles, header or page setup to copy` };
 
   const styles = readStyles(readText(parts, STYLES) ?? '');
-  const styleMap = deriveStyleMap(styles);
 
   return {
     ok: true,
     blueprint: {
       snapshot,
-      styles,
-      styleMap,
+      styleMap: deriveStyleMap(styles),
       bareStyles: deriveBareStyles(styles),
       fields: findFields(headerParts(snapshot)),
     },
