@@ -1,5 +1,6 @@
-// cardmirror's sanctioned plugin surface (api v1), read off the shipped
-// renderer bundle's registration validator.
+// cardmirror's sanctioned plugin surface, as published in its
+// reference-docs/cardmirror-plugin-api.md (api v1). only the members laymirror
+// uses are typed.
 
 import { storageKey } from './cardmirror.js';
 
@@ -8,7 +9,7 @@ export interface DocInfo {
   docTitle: string;
 }
 
-/** handed to a command's run(). only the members laymirror uses are typed. */
+/** handed to a command's run(). */
 export interface PluginApi {
   docInfo(): DocInfo | null;
   /** persisted per plugin, json-serialised into localStorage. */
@@ -22,9 +23,9 @@ export interface Command {
   /** must start with `<pluginId>.` or registration is rejected. */
   id: string;
   label: string;
-  keywords?: string[];
+  keywords?: readonly string[];
   /** auto-binds during the keymap rebuild, but only when the chord is free. */
-  defaultKey?: string | string[];
+  defaultKey?: string | string[] | null;
   run(api: PluginApi): void | Promise<void>;
 }
 

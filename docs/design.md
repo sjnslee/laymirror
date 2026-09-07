@@ -100,9 +100,10 @@ writes what is on screen.
 
 ## versioned internals
 
-`src/host/cardmirror.ts` and `src/template/styles.ts` are stamped with the
-cardmirror version they were read against (1.3.0). export style ids (`Heading4`
-for a tag, `Style13ptBold` for a cite mark) come from its exporter; the
-native/legacy import split from its parse worker; `pmd-recent-files` and
-`#doc-name-chip-text` map a filename to a path; `plugin:<id>` is the storage
-bag.
+every undocumented internal is in `src/host/cardmirror.ts`,
+`src/host/electron.ts` and `src/template/styles.ts`, stamped with the
+cardmirror version they were read against (1.3.0). export style ids
+(`Heading4` for a tag, `Style13ptBold` for a cite mark) come from its
+exporter; the native/legacy import split from its parse worker;
+`pmd-recent-files` and `#doc-name-chip-text` map a filename to a path;
+`plugin:<id>` is the storage bag.
