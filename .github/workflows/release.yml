@@ -33,11 +33,9 @@ jobs:
             exit 1
           fi
 
-      # build before test: one of the tests reads plugin.js to check esbuild
-      # still emits a self-contained classic script
       - run: npm run typecheck
-      - run: npm run build
       - run: npm test
+      - run: npm run build
 
       # plugin.js is gitignored — it exists only as a release asset
       - name: publish

@@ -1,10 +1,8 @@
-// the file calls the save pipeline stands on. signatures read off the shipped
-// preload/main at 1.3.0.
+// the file calls the save pipeline stands on, read off the preload at 1.3.0.
 //
-// `readFileAtPath` is scoped to paths the user has put in play, and serves only
-// .cmir/.docx — so a .dotx or macro-enabled .docm can only come in through
-// `openFile`, which puts the picker up and grants read scope on the way out.
-// writes are unscoped.
+// `readFileAtPath` is scoped to paths the user has put in play and serves only
+// .cmir/.docx, so a .dotx or .docm arrives through `openFile` — the os picker,
+// which grants read scope on the way out. writes are unscoped.
 
 export interface FileStat {
   mtimeMs: number;

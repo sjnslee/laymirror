@@ -1,8 +1,7 @@
 // a template, and everything laymirror reads out of one.
 //
 // the whole .docx is kept byte for byte and everything else derived from it on
-// demand. storing a digested profile instead meant every new thing laymirror
-// learned to read needed the user to load their template again.
+// demand, so learning to read something new costs the user nothing.
 
 import { findFields, type Field } from '../docx/fields.js';
 import { captureSnapshot, type Snapshot } from '../docx/snapshot.js';

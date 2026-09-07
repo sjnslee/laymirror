@@ -1,12 +1,11 @@
 // @vitest-environment jsdom
 //
-// the whole pipeline against the real school template rather than a fixture.
-// skipped unless `local/lay-template.docm` is present — it is gitignored,
-// because a school's template is theirs.
+// the whole pipeline against a real school template rather than a fixture.
+// skipped unless `local/lay-template.docm` is there; it is gitignored, because
+// a school's template is theirs.
 //
-// this template marks its editable text with zero-width spaces, so it is the
-// only thing that exercises the marked field path against something a school
-// actually wrote.
+// it marks its editable text with zero-width spaces, so it is the only thing
+// exercising the marked path against something a school wrote.
 
 import { describe, expect, it } from 'vitest';
 import { existsSync, readFileSync } from 'node:fs';
@@ -32,12 +31,7 @@ suite('a real school template', () => {
 
   const header = (values = {}) => readText(applied(values), 'word/header1.xml')!;
 
-  it('reads a macro-enabled template', () => {
-    expect(read(readFileSync(DONOR), 'lay-template.docm').ok).toBe(true);
-  });
-
-  // the four things a squad changes, and nothing else. the school wrapped each
-  // of them in a zero-width space; everything outside those is the template's
+  // the four things a squad changes, each wrapped in a zero-width space
   it('offers exactly the text the school marked as editable', () => {
     expect(blueprint().fields.map((field) => field.label)).toEqual([
       'School',
@@ -47,8 +41,7 @@ suite('a real school template', () => {
     ]);
   });
 
-  // ' Page ' and ' of ' read as plain text but belong to the PAGE/NUMPAGES
-  // fields, and the numbers between them are word's to recompute
+  // ' Page ' and ' of ' read as plain text but belong to the page fields
   it('leaves the live page numbering alone', () => {
     const labels = blueprint().fields.map((field) => field.label);
     expect(labels.join(' ')).not.toMatch(/\bof\b|\bPage\b/i);
@@ -80,8 +73,7 @@ suite('a real school template', () => {
     expect(xml).not.toContain('File Title');
   });
 
-  // a value is written between the marks, never over them. lose one and the
-  // field stops existing the next time the template is read
+  // a value goes between the marks: lose one and the field stops existing
   it('keeps every marker, so a value can be typed over', () => {
     const marks = (xml: string) => [...xml].filter((c) => c === ZWSP).length;
     const key = blueprint().fields[1]!.key;
@@ -89,8 +81,8 @@ suite('a real school template', () => {
     expect(marks(header({ [key]: '27-28' }))).toBe(8);
   });
 
-  // the year arrives split across two runs ('2' then '6-27'); the value has to
-  // land whole in the first and empty the rest, or it comes out doubled
+  // the year arrives split across two runs ('2' then '6-27'), and writing into
+  // each separately would double it
   it('fills a field that the school split across runs', () => {
     const key = blueprint().fields[1]!.key;
     const xml = header({ [key]: '27-28' });

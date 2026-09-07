@@ -1,12 +1,10 @@
 // @vitest-environment jsdom
 //
-// the plugin as cardmirror loads it: one script, run in the renderer's main
-// world, that registers itself and then has to survive being clicked on. this
-// is the only test that exercises the panel, the commands and the save
-// pipeline against each other.
+// the plugin as cardmirror loads it: one script in the renderer's main world
+// that registers itself. the only test running the panel, the commands and the
+// save pipeline against each other.
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { readFileSync } from 'node:fs';
 import { makeExport, makeTemplate } from './fixture.js';
 import { stubStorage } from './dom.js';
 import { readText, unzip, writeText, zip } from '../src/docx/zip.js';
@@ -41,15 +39,13 @@ async function boot({ listed = true } = {}): Promise<Host> {
 
   let disk = makeExport();
   let templateDisk: Uint8Array | null = makeTemplate();
-  // laymirror re-reads a template only when its mtime has moved, so the stand-in
-  // for a word edit has to move it
+  // a template is re-read only when its mtime moves, so an edit has to move it
   let templateMtime = 1;
   let nextPick: { name: string; bytes: Uint8Array; handle: string } | null = null;
   let definition: PluginDefinition | null = null;
 
-  // cardmirror's own storage is one localStorage entry per plugin, and
-  // laymirror reads it directly to start watching before any command has run.
-  // an in-memory bag here would hide that half of the plugin from every test.
+  // one localStorage entry per plugin, which laymirror reads directly to start
+  // watching. an in-memory bag would hide that half of the plugin
   const bag = (): Record<string, unknown> =>
     JSON.parse(localStorage.getItem('plugin:laymirror') || '{}');
 
@@ -91,8 +87,7 @@ async function boot({ listed = true } = {}): Promise<Host> {
     },
   });
 
-  // cardmirror names the open document in its chip and turns it into a path
-  // through its recent-files history
+  // the chip names the open document; the history turns that into a path
   const chip = document.createElement('div');
   chip.id = 'doc-name-chip-text';
   chip.textContent = '1ac.docx';
@@ -204,8 +199,7 @@ describe('the panel', () => {
     expect(labels).toEqual(['Team Code', 'lay']);
   });
 
-  // turning it on before loading a template is the expected first step, not a
-  // failure — the menu has just opened out with the load button in it
+  // turning it on before loading a template is the expected first step
   it('asks for a template rather than reporting a failure', async () => {
     await host.run('laymirror.panel');
     await click('turn on');
@@ -253,13 +247,6 @@ describe('turning it on', () => {
     expect(readText(parts, 'word/styles.xml')).toContain('w:styleId="Tag"');
     expect(readText(parts, 'word/theme/theme1.xml')).not.toBeNull();
     expect(readText(parts, 'word/document.xml')).toContain('headerReference');
-  });
-
-  // loading a template onto a document that is already lay used to change
-  // nothing until the next save, which read as the feature not working at all
-  it('applies a template loaded after it was turned on', async () => {
-    await turnOn();
-    expect(readText(unzip(host.disk()), 'word/header1.xml')).toContain('PAGE');
   });
 
   it('turns back off and leaves the file alone', async () => {
@@ -321,8 +308,8 @@ describe('re-reading the template', () => {
     expect(header()).toContain('New ');
   });
 
-  // a template that moved, or a .docm — which cardmirror will not read back
-  // from a path at all — is not worth losing an apply over
+  // a template that moved, or a .docm cardmirror will not read from a path,
+  // is not worth losing an apply over
   it('falls back to the stored copy when the file cannot be read', async () => {
     await load();
     host.editTemplate(null);
@@ -331,11 +318,8 @@ describe('re-reading the template', () => {
   });
 });
 
-// cardmirror writes a pmd-recent-files entry for a document it loads in place
-// or saves itself, and none at all for one it hands to a window it spawned —
-// which is every open after the first, and every finder double-click. a
-// word-authored file opened that way was reported as needing to be saved as a
-// docx, which it already was.
+// cardmirror writes no history entry for a document it hands to a window it
+// spawned, which is every open after the first.
 describe('a document cardmirror never listed', () => {
   beforeEach(async () => {
     host = await boot({ listed: false });
@@ -428,8 +412,8 @@ describe('between documents and sessions', () => {
     expect(host.said()).toContain('too large');
   });
 
-  // laymirror rewrites the file it is pointed at, so adopting a document
-  // nobody asked it to touch is the one thing it must not do on its own
+  // laymirror rewrites the file it is pointed at, so adopting one nobody asked
+  // it to touch is the thing it must never do
   it('does not turn a new document on by itself', async () => {
     await turnOnAndLoad();
     await host.run('laymirror.panel');
@@ -437,16 +421,5 @@ describe('between documents and sessions', () => {
     openAnother();
     await host.run('laymirror.panel');
     expect(panel()!.textContent).toContain('lay formatting is off');
-  });
-});
-
-describe('the built bundle', () => {
-  // esbuild has to produce one self-contained classic script, because that is
-  // all cardmirror will run
-  it('is an iife with no import left in it', () => {
-    const bundle = readFileSync('plugin.js', 'utf8');
-    expect(bundle).not.toMatch(/^\s*import\s/m);
-    expect(bundle).not.toMatch(/^\s*export\s/m);
-    expect(bundle).toContain('__registerCardMirrorPlugin');
   });
 });

@@ -1,6 +1,5 @@
-// a minimal but structurally valid docx, built in memory. hermetic, and it
-// lets a test choose whether docProps/custom.xml exists — the real donors
-// differ on that and the two paths behave differently.
+// a minimal but structurally valid docx, built in memory. custom.xml is
+// optional because real donors differ on it and the two paths differ too.
 
 import { writeText, type Parts } from '../src/docx/zip.js';
 
@@ -42,10 +41,8 @@ export function makeDocx(opts: { custom?: boolean } = {}): Parts {
   return parts;
 }
 
-// ── a synthetic donor template ────────────────────────────────────────
-// exercises everything readTemplate has to cope with in a real school
-// template: basedOn chains, theme-referenced fonts, a section with a header
-// and footer, and an attachedTemplate carrying an absolute path.
+// a synthetic donor template: basedOn chains, theme-referenced fonts, a section
+// with a header and footer, and an attachedTemplate carrying an absolute path.
 
 import { zip } from '../src/docx/zip.js';
 
@@ -69,14 +66,13 @@ const STYLES =
   '<w:pPr><w:pageBreakBefore/><w:spacing w:after="60"/><w:jc w:val="center"/><w:outlineLvl w:val="0"/></w:pPr>' +
   '<w:rPr><w:rFonts w:ascii="Times New Roman" w:hAnsi="Times New Roman"/><w:b/><w:smallCaps/><w:sz w:val="40"/></w:rPr></w:style>' +
   // headings 2 and 3 use the theme major font and carry no page break
-  // heading 2 carries word's stock accent1 blue, as every real donor does —
-  // a themed colour, so it must not reach the profile
+  // heading 2 carries word's stock accent1 blue, as every real donor does
   '<w:style w:type="paragraph" w:styleId="Heading2"><w:name w:val="heading 2"/><w:basedOn w:val="Normal"/>' +
   '<w:pPr><w:keepNext/><w:keepLines/><w:spacing w:before="200"/><w:outlineLvl w:val="1"/></w:pPr>' +
   '<w:rPr><w:rFonts w:asciiTheme="majorHAnsi"/><w:b/><w:color w:val="4F81BD" w:themeColor="accent1"/><w:sz w:val="26"/></w:rPr></w:style>' +
   '<w:style w:type="paragraph" w:styleId="Heading3"><w:name w:val="heading 3"/><w:basedOn w:val="Normal"/>' +
   '<w:pPr><w:keepNext/><w:keepLines/><w:spacing w:before="200"/><w:outlineLvl w:val="2"/></w:pPr>' +
-  // heading 3's colour is named outright, so it is a real choice and stays
+  // heading 3's colour is named outright rather than themed
   '<w:rPr><w:rFonts w:asciiTheme="majorHAnsi"/><w:b/><w:color w:val="7A0019"/></w:rPr></w:style>' +
   // Tag inherits font and size from Normal
   '<w:style w:type="paragraph" w:customStyle="1" w:styleId="Tag"><w:name w:val="Tag"/><w:basedOn w:val="Normal"/>' +
@@ -118,8 +114,8 @@ const WML = 'http://schemas.openxmlformats.org/wordprocessingml/2006/main';
 const REL_NS = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships';
 const PKG_REL_NS = 'http://schemas.openxmlformats.org/package/2006/relationships';
 
-/** the shape a real school header has: a team code word split into two runs
- *  by its revision ids, a ptab, and a live page field. */
+/** a real school header: a team code split across runs by its revision ids,
+ *  a ptab, and a live page field. */
 const DONOR_HEADER =
   '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
   `<w:hdr xmlns:w="${WML}">` +
@@ -137,8 +133,7 @@ const DONOR_FOOTER =
   '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
   `<w:ftr xmlns:w="${WML}"><w:p><w:r><w:t>lay</w:t></w:r></w:p></w:ftr>`;
 
-/** a header that points at a school crest, plus the crest itself. a template
- *  that loses its image parts puts a red x on every page. */
+/** a header pointing at a school crest, plus the crest itself. */
 const HEADER_RELS =
   '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
   `<Relationships xmlns="${PKG_REL_NS}">` +
@@ -180,10 +175,8 @@ export function makeTemplate(): Uint8Array {
   return zip(parts);
 }
 
-// ── a cardmirror export ───────────────────────────────────────────────
-// what the save pipeline actually receives: cardmirror's own style ids, no
-// pStyle at all on cite paragraphs or card bodies, its one hardcoded letter
-// section, and Debate.dotm as the attached template.
+// what the save pipeline receives: cardmirror's own style ids, no pStyle at all
+// on cite paragraphs or card bodies, and its one hardcoded letter section.
 
 const run = (styleId: string | null, text: string) =>
   '<w:r>' +

@@ -12,8 +12,7 @@ beforeEach(() => {
     readFileAtPath: vi.fn(),
     writeFileAtPath: vi.fn(),
   };
-  // jsdom reports no focus by default, which would put every test on the
-  // backed-off interval
+  // jsdom reports no focus, which would put every test on the backed-off poll
   vi.spyOn(document, 'hasFocus').mockReturnValue(true);
 });
 
@@ -43,8 +42,7 @@ describe('watchSaves', () => {
     watchSaves(saved).start('/doc.docx');
     await poll();
 
-    // word writes in stages: the first reading of a new mtime is not a
-    // finished file, so nothing fires yet
+    // a save lands in stages, so the first new mtime is not a finished file
     stat.mockResolvedValue(at(200, 40));
     await poll();
     expect(saved).not.toHaveBeenCalled();

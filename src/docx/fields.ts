@@ -1,6 +1,6 @@
 // the parts of a header or footer the user is allowed to change.
 //
-// laymirror does not build a header. it finds the two or three words inside the
+// laymirror does not build a header. it finds the few words inside the
 // template's own header that belong to whoever holds the file — a team code, a
 // year, a title, a name — and swaps them, leaving every other byte alone.
 //
@@ -43,9 +43,8 @@ interface Segment {
   to: number;
 }
 
-/** what interrupted the text at an offset. the " page " and " of " around
- *  `PAGE` and `NUMPAGES` read as plain text but are not the user's to edit, and
- *  touching a field boundary is what tells them apart from real content. */
+/** what interrupted the text at an offset. " page " and " of " read as plain
+ *  text, and touching a field boundary is what tells them from real content. */
 type Break = { at: number; field: boolean };
 
 /** properties, not content. `w:pPr` holds tab stops, and reading those as tabs
@@ -60,15 +59,15 @@ const inFallback = (node: Element): boolean => {
   return false;
 };
 
-/** the `w:t` nodes this paragraph owns, in document order, each with a flattened
- *  text offset — plus the offsets where the text is interrupted.
+/** the `w:t` nodes this paragraph owns, in document order, each with a
+ *  flattened text offset, plus the offsets where the text is interrupted.
  *
  *  a nested paragraph is skipped rather than inlined: a text box holds whole
- *  paragraphs inside the run that anchors it, and each is visited on its own.
+ *  paragraphs inside the run anchoring it, and each is visited on its own.
  *
  *  a tab, a line break and a word field all interrupt — the two sides of a tab
- *  are two different things to edit. everything between a field's begin and end
- *  is dropped: the "3" in "page 3 of 9" is a result word recomputes. */
+ *  are two things to edit — and a field's own result is dropped, since the "3"
+ *  in "page 3 of 9" is word's to recompute. */
 function flatten(paragraph: Element): { runs: TextRun[]; breaks: Break[] } {
   const runs: TextRun[] = [];
   const breaks: Break[] = [];
@@ -148,8 +147,7 @@ interface Placed {
 }
 
 /** every editable span in one header or footer, against a document the caller
- *  can go on to edit: a segment only means anything beside the nodes it was
- *  measured over. */
+ *  can go on to edit: a segment only means anything beside its own nodes. */
 function place(partName: string, doc: Document): Placed[] {
   const out: Placed[] = [];
 
@@ -193,10 +191,9 @@ export function findFields(parts: Record<string, string>): Field[] {
   return out;
 }
 
-/** replace the runs a segment covers with one run's worth of text. the value
- *  lands whole in the first node and the rest keep only what falls outside — a
- *  `w:r` carries the formatting, so emptying one is safe where deleting it
- *  would take the small caps with it. */
+/** replace the runs a segment covers with one run's worth of text: the value
+ *  lands whole in the first node and the rest keep only what falls outside.
+ *  a `w:r` carries the formatting, so an emptied run has to stay. */
 function writeSegment(runs: readonly TextRun[], segment: Segment, value: string): void {
   let written = false;
   for (const run of runs) {

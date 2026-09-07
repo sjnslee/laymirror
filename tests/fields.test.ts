@@ -12,8 +12,8 @@ const hdr = (body: string) =>
 const text = (xml: string): string =>
   [...xml.matchAll(/<w:t[^>]*>([^<]*)<\/w:t>/g)].map((m) => m[1]).join('|');
 
-/** what a real school header looks like: a code word split across runs by
- *  word's revision ids, a right tab, a title, and a live page field. */
+/** a real school header: a code split across runs by word's revision ids, a
+ *  right tab, a title, and a live page field. */
 const REAL = hdr(
   '<w:p><w:r><w:t>BCP </w:t></w:r><w:r><w:t>26</w:t></w:r><w:r><w:t>-</w:t></w:r>' +
     '<w:r><w:t>27</w:t></w:r>' +
@@ -29,8 +29,8 @@ const REAL = hdr(
     '<w:r><w:fldChar w:fldCharType="end"/></w:r></w:p>',
 );
 
-/** the zero-width space a template author wraps editable text in. spelled out
- *  rather than pasted, because it is invisible in a source file. */
+/** the zero-width space a template author wraps editable text in, spelled out
+ *  because it is invisible in a source file. */
 const ZW = '\u200b';
 
 /** the real BCP header's shape: `<zw>School<zw> <zw>26-27<zw>` — the year split
@@ -55,8 +55,7 @@ describe('findFields', () => {
     ]);
   });
 
-  // " page " and " of " are a word field's own decoration, not the user's to
-  // edit, and the result inside the field is recomputed on every open
+  // " page " and " of " are a word field's decoration, not the user's to edit
   it('offers nothing that belongs to a word field', () => {
     const labels = findFields({ [HDR]: REAL }).map((f) => f.label);
     expect(labels).not.toContain('Page');
@@ -70,9 +69,8 @@ describe('findFields', () => {
     expect(findFields({ [HDR]: marked }).map((f) => f.label)).toEqual(['Somebody']);
   });
 
-  // this is the shape of the real BCP header: four marked spans, one of them
-  // split across runs by word's revision ids, plain text between them that is
-  // the school's and not the user's
+  // four marked spans, one split across runs, with the school's own text
+  // between them
   it('reads the marks a real school template carries', () => {
     expect(findFields({ [HDR]: MARKED }).map((f) => f.label)).toEqual([
       'School',
@@ -81,14 +79,14 @@ describe('findFields', () => {
     ]);
   });
 
-  // a marked template says exactly what is editable, so the tab-and-field
-  // guesswork must not run alongside it and offer the rest of the header too
+  // a marked template says what is editable, so the guesswork must not run
+  // alongside it and offer the rest of the header too
   it('offers only what is marked, once anything is', () => {
     expect(findFields({ [HDR]: MARKED }).map((f) => f.label)).not.toContain('Page');
   });
 
-  // an author who deleted half a pair should lose that field, not shift every
-  // field after it onto the wrong text
+  // half a pair loses that field rather than shifting the rest onto the wrong
+  // text
   it('drops a mark left without its partner', () => {
     const odd = hdr(`<w:p><w:r><w:t>${ZW}Kept${ZW} tail ${ZW}orphan</w:t></w:r></w:p>`);
     expect(findFields({ [HDR]: odd }).map((f) => f.label)).toEqual(['Kept']);
@@ -129,8 +127,7 @@ describe('fillFields', () => {
     expect(text(out[HDR]!)).toBe('BCP |26|-|27|Name| Page |1');
   });
 
-  // the run carries the formatting — smallCaps, the border, the size — so an
-  // emptied run has to stay in the document
+  // the run carries the formatting, so an emptied one has to stay
   it('empties a run rather than removing it', () => {
     const out = fillFields({ [HDR]: REAL }, { [keys()[0]!]: 'X' });
     expect([...out[HDR]!.matchAll(/<w:r>/g)]).toHaveLength(
@@ -138,8 +135,7 @@ describe('fillFields', () => {
     );
   });
 
-  // the value goes between the marks, never over them: eat one and the field
-  // stops existing the next time the template is read
+  // the value goes between the marks: eat one and the field stops existing
   it('writes inside the marks and leaves them there', () => {
     const marked = findFields({ [HDR]: MARKED });
     const out = fillFields({ [HDR]: MARKED }, {

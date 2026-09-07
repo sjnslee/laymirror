@@ -1,9 +1,7 @@
-// save detection by polling: cardmirror has no save hook for plugins, so the
-// file's mtime is the signal.
+// save detection by polling: there is no save hook, so the mtime is the signal.
 //
-// a change has to be seen twice at the same size before it counts, so a save
-// caught half-written is never read; and our own write is absorbed by `resync`,
-// or the rewrite would retrigger the watcher forever.
+// a change counts only once it has been seen twice at the same size, so a save
+// caught half-written is never read.
 
 import { statFile, type FileStat } from './electron.js';
 
@@ -15,7 +13,7 @@ const BLURRED_MS = 5000;
 export interface Watcher {
   start(path: string): void;
   stop(): void;
-  /** call after writing the file ourselves, or the write comes back as a save */
+  /** call after writing the file, or the write comes back as a save */
   resync(): Promise<void>;
 }
 
@@ -46,7 +44,7 @@ export function watchSaves(onSaved: (path: string) => void): Watcher {
       // a stat that fails is not a save
     }
 
-    // stop() may have run while we were awaiting
+    // stop() may have run during the await
     if (path !== watching) return;
 
     if (now && !same(now, baseline)) {

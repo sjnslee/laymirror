@@ -1,5 +1,5 @@
-// what laymirror can actually see, printed. when a command does nothing, this
-// says which lookup returned nothing.
+// what laymirror can see, printed. when a command does nothing, this says which
+// lookup came back empty.
 
 import { currentFilename, DOC_NAME_CHIP, LS, storageKey } from '../host/cardmirror.js';
 import { resolveDocPath } from '../host/paths.js';
@@ -112,8 +112,8 @@ function collect(api: PluginApi): Line[] {
   // what stands in when the history has no entry to give
   add('path the user pointed at', store(api).doc(currentFilename()).path);
 
-  // the bag laymirror reads before any command has run, and therefore the one
-  // that decides whether a plain save is picked up at all
+  // read before any command has run, so it decides whether a plain save is
+  // picked up at all
   const bag = localStorage.getItem(storageKey('laymirror'));
   add('plugin:laymirror', bag === null ? 'empty — nothing turned on yet' : `${bag.length} bytes`);
 

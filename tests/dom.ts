@@ -1,6 +1,5 @@
-// jsdom in this project ships no `localStorage`, and cardmirror's recent-files
-// history is the only way to turn a filename into a path — so the tests that
-// exercise that path have to install one.
+// jsdom ships no `localStorage` here, and the recent-files history is the only
+// way to turn a filename into a path.
 
 export function stubStorage(): void {
   const bag = new Map<string, string>();

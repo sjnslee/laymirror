@@ -1,9 +1,8 @@
 // laymirror's own status line.
 //
 // cardmirror's toast is positioned at the mouse pointer, so a message about a
-// file write lands wherever the cursor happened to be sitting — over the text,
-// off in a margin, or under the panel that asked for it. this one is always in
-// the same corner, and there is only ever one of it.
+// file write lands wherever the cursor was sitting. this one is always in the
+// same corner, and there is only ever one of it.
 
 const ROOT_ID = 'laymirror-status';
 const STYLE_ID = 'laymirror-status-style';
@@ -54,8 +53,8 @@ export function say(message: string, kind: 'ok' | 'problem' = 'ok'): void {
     document.body.append(root);
   }
 
-  // a second message replaces the first rather than stacking under it: they are
-  // all about the same one file
+  // a second message replaces the first rather than stacking: they are all
+  // about the same one file
   if (going) clearTimeout(going);
   if (removing) clearTimeout(removing);
   root.className = kind === 'problem' ? 'lm-problem' : '';

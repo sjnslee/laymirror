@@ -29,8 +29,7 @@ describe('base64', () => {
     expect(decode(encode(bytes))).toEqual(bytes);
   });
 
-  // one argument per byte overflows the stack, and a template with a crest is
-  // big enough to reach it
+  // one argument per byte overflows the stack at this size
   it('survives a template-sized file', () => {
     const big = new Uint8Array(300_000).map((_, i) => i % 256);
     expect(decode(encode(big))).toEqual(big);
@@ -73,8 +72,7 @@ describe('documents', () => {
     expect(bag.doc('1ac.docx').templateId).toBe('a');
   });
 
-  // two schools' documents can be open at once, and a single slot would make
-  // the second wear the first one's format
+  // two schools' documents can be open at once
   it('keeps documents apart', () => {
     const bag = store(api);
     bag.setDoc('ours.docx', { templateId: 'a' });
@@ -94,8 +92,7 @@ describe('header values', () => {
     expect(bag.valuesFor('1ac.docx', 'a')).toEqual({ code: 'BCP 26-27' });
   });
 
-  // a team code and a cutter's name are the same all season, so the next
-  // document off the same template starts where the last one ended
+  // a team code and a cutter's name are the same all season
   it('seeds a fresh document from the last one off the same template', () => {
     const bag = store(api);
     bag.setValues('1ac.docx', 'a', { code: 'BCP 26-27', title: 'Aff' });

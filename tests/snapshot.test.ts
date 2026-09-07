@@ -30,8 +30,7 @@ describe('captureSnapshot', () => {
     expect(readText(snap.parts, 'word/numbering.xml')).toContain('w:numId="7"');
   });
 
-  // a header's crest is a part the header points at, and a header copied
-  // without it puts a red x on every page
+  // a header copied without its crest puts a red x on every page
   it('carries what the header itself relates to', () => {
     const snap = snapshot();
     expect(snap.parts['word/media/crest.png']).toBeDefined();
@@ -105,8 +104,7 @@ describe('restoreSnapshot', () => {
     expect(ct).toContain('/word/numbering.xml');
   });
 
-  // a part with no declared content type makes word call the whole file
-  // corrupt, and an image is declared by extension rather than by name
+  // an image is declared by extension rather than by name
   it('declares the extension a carried image needs', () => {
     const parts = exported();
     expect(readText(parts, '[Content_Types].xml')).not.toContain('image/png');
@@ -140,8 +138,7 @@ describe('restoreSnapshot', () => {
 });
 
 describe('retargetSectPr', () => {
-  // a dangling r:id makes word declare the file corrupt, so a reference whose
-  // part did not come back has to go rather than point at nothing
+  // a dangling r:id makes word call the file corrupt
   it('drops a reference whose part is missing', () => {
     const sect =
       '<w:sectPr><w:headerReference w:type="default" r:id="rId10"/>' +
@@ -162,9 +159,8 @@ describe('readSectPr', () => {
   });
 });
 
-// word resolves the theme and the font table through a relationship, and
-// cardmirror's exporter never writes one — so a carried theme would be a part
-// word simply never reads
+// word resolves the theme and font table through a relationship cardmirror
+// never writes, so a carried theme would be a part it never reads
 describe('restoreSnapshot — relationships word needs', () => {
   it('relates the theme, font table and numbering it carried', () => {
     const parts = exported();

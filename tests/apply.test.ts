@@ -46,8 +46,8 @@ describe('applyTemplate', () => {
     );
   });
 
-  // word rebuilds the file from scratch on every save, so a template applied
-  // twice must land in the same place, not stack
+  // an apply lands on a file laymirror has already applied to, so it has to
+  // land in the same place rather than stack
   it('is the same file applied twice', () => {
     const once = applyTemplate(makeExport(), blueprint(), {}, 'template:lay.docx');
     const twice = applyTemplate(once, blueprint(), {}, 'template:lay.docx');
@@ -69,8 +69,8 @@ describe('applyTemplate — the header the user typed', () => {
     expect(readText(parts, 'word/header1.xml')).toContain('WDL 27-28');
   });
 
-  // the template is the source, never the last save — otherwise a value typed
-  // once would be baked in and could never be typed over
+  // the template is the source, never the last save, or a value typed once
+  // could never be typed over
   it('starts from the template, so a value can be replaced', () => {
     const key = teamCode();
     const once = applyTemplate(makeExport(), blueprint(), { [key]: 'first' }, 'id');
@@ -98,8 +98,7 @@ describe('applyTemplate — style mapping', () => {
   });
 
   it('leaves ordinary prose after a heading alone', () => {
-    // the last paragraph is plain text following a hat, and must not be
-    // indented as evidence
+    // plain text following a hat must not be indented as evidence
     const doc = documentOf(applied());
     const paragraph = [...doc.matchAll(/<w:p\b[^>]*>[\s\S]*?<\/w:p>/g)]
       .map((m) => m[0])

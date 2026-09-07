@@ -1,13 +1,10 @@
 // @vitest-environment jsdom
 //
-// the path the whole plugin exists for: cardmirror rebuilds the .docx on save,
-// throwing the header, theme and page setup away, and laymirror puts them back
-// without anyone pressing anything.
+// the path the whole plugin exists for: cardmirror rebuilds the .docx on save
+// and laymirror puts the template back, with nobody pressing anything.
 //
-// nothing here runs a command. cardmirror only hands a plugin its api inside a
-// command's `run()`, so a plugin that waits for one does nothing at all in a
-// session where the user just opens a file and saves it — which is every
-// session.
+// nothing here runs a command, because a plugin waiting for the api object
+// would do nothing in a session where the user opens a file and saves it.
 
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { makeExport, makeTemplate } from './fixture.js';
@@ -87,9 +84,8 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
-/** long enough for the watcher to see a change twice at the same size, which
- *  is what it requires before it calls it a save. generous because jsdom's
- *  window is never focused, so the watcher runs at its backed-off interval. */
+/** long enough for the watcher to see a change twice at the same size. jsdom
+ *  is never focused, so it runs at its backed-off interval. */
 const settle = async (): Promise<void> => {
   await vi.advanceTimersByTimeAsync(15_000);
 };
@@ -134,9 +130,8 @@ it('writes the header values held for the document', async () => {
   expect(readText(unzip(disk), 'word/header1.xml')).toContain('WDL 27-28');
 });
 
-// an unzip per save buys nothing — the template does not change between two
-// keystrokes — and the save path has to stay cheap. "apply now" is where going
-// back to the file belongs, and it is tested in plugin.test.ts
+// an unzip per save buys nothing: the template cannot change between two
+// keystrokes. going back to the file belongs to "apply now"
 it('uses the stored template on a save rather than re-reading it', async () => {
   await settle();
 

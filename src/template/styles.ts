@@ -104,8 +104,6 @@ export const EXPORT_STYLE_BY_TYPE: Record<BlockType | RunType, string | null> = 
   analytic_mark: 'AnalyticChar',
 };
 
-// ── reading a template's own styles ───────────────────────────────────
-
 export interface StyleInfo {
   id: string;
   name: string;
@@ -131,14 +129,13 @@ export function readStyles(stylesXml: string): StyleInfo[] {
   return out;
 }
 
-/** reading cardmirror's own legacy tables means the mapping we pick is the one
- *  it will agree with when the file comes back. */
+/** reading cardmirror's own legacy tables picks the mapping it will agree with
+ *  when the file comes back. */
 const roleOf = (style: StyleInfo): string | null =>
   LEGACY_BY_NAME[style.name.toLowerCase()] ?? LEGACY_BY_ID[style.id] ?? null;
 
-/** the role each export style wants a home for, and the kind it must land on: a
- *  run style mapped onto a paragraph style writes an `rStyle` word cannot
- *  resolve. */
+/** the role each export style wants a home for, and the kind it must land on:
+ *  a run style on a paragraph style writes an `rStyle` word cannot resolve. */
 const WANTED: Record<string, { role: string; kind: StyleInfo['kind'] }> = {
   Heading4: { role: 'tag', kind: 'paragraph' },
   Style13ptBold: { role: 'char-cite', kind: 'character' },
@@ -189,8 +186,8 @@ export function deriveStyleMap(styles: readonly StyleInfo[]): Record<string, str
   for (const exportId of Object.values(EXPORT_STYLE_BY_TYPE)) {
     if (!exportId) continue;
     const wanted = WANTED[exportId];
-    // never cardmirror's own — a candidate equal to the id being remapped is
-    // the thing we are trying to get away from
+    // never cardmirror's own: a candidate equal to the id being remapped is
+    // the thing the remap exists to get away from
     const preferred = wanted
       ? (byKind[wanted.kind as 'paragraph' | 'character'] ?? byKind.paragraph)
           .get(wanted.role)

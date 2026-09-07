@@ -1,8 +1,8 @@
-// the lay marker: a custom document property beside cardmirror's own `cmirDocId`.
+// the lay marker: a custom document property beside cardmirror's `cmirDocId`.
 // it travels with the file and survives a word round-trip, which is what makes
 // activation per-file rather than per-machine.
 //
-// custom.xml is merged, never replaced — cardmirror keeps its doc id there, and
+// custom.xml is merged, never replaced: cardmirror keeps its doc id there, and
 // sharepoint-derived templates a ContentTypeId.
 
 import { MARKER_PROP } from '../host/cardmirror.js';

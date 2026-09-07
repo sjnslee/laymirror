@@ -31,8 +31,7 @@ beforeEach(() => {
 
 describe('resolveDocPath', () => {
   it('finds the open document among everything ever opened', () => {
-    // the bug this replaces: pmd-recent-files is a history, so every one of
-    // these looked like a candidate and one open document read as ambiguous
+    // a history, not a list of what is open: every entry looks like a candidate
     recents([
       entry('1ac.docx', '/docs/1ac.docx', 5),
       entry('neg block.docx', '/docs/neg block.docx', 4),
@@ -44,8 +43,7 @@ describe('resolveDocPath', () => {
   });
 
   it('works with no docInfo at all, which is the normal case', () => {
-    // docInfo() is null until cardmirror has saved the file itself, and it
-    // never has for a word-authored lay docx
+    // docInfo() is null until cardmirror has saved the file itself
     recents([entry('1ac.docx', '/docs/1ac.docx')]);
     showing('1ac.docx');
 
@@ -75,8 +73,8 @@ describe('resolveDocPath', () => {
   });
 
   it('never guesses at another file when this one has no path', () => {
-    // a browser-opened document has no handle; rewriting the neighbour on the
-    // list instead would be worse than doing nothing
+    // a browser-opened document has no handle, and rewriting the neighbour on
+    // the list would be worse than doing nothing
     recents([entry('1ac.docx', null), entry('other.docx', '/docs/other.docx')]);
     showing('1ac.docx');
 
@@ -84,9 +82,7 @@ describe('resolveDocPath', () => {
   });
 
   it('separates a docx with no entry from a document laymirror cannot touch', () => {
-    // cardmirror writes no history entry for a document it handed to a window
-    // it spawned, which is every open after the first. that file is still a
-    // .docx, and the user can say where it is — a .cmir never can be
+    // a .docx with no entry can still be pointed at; a .cmir never can
     recents([entry('other.docx', '/docs/other.docx')]);
     showing('1ac.docx');
     expect(resolveDocPath(null)).toEqual({ kind: 'none', because: 'unlisted' });

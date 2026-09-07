@@ -37,11 +37,8 @@ export interface PluginDefinition {
 
 type Register = (def: PluginDefinition) => void;
 
-/** the same api, minus the parts only cardmirror can provide.
- *
- *  cardmirror hands the real object only to a command's `run()`, so this stands
- *  in until one runs, over the same storage bag. a document is watched from the
- *  moment laymirror loads, and the first command upgrades it. */
+/** the same api, minus the parts only cardmirror can provide. it stands in over
+ *  the same storage bag until a command's `run()` hands over the real one. */
 export function bootApi(pluginId: string): PluginApi {
   const key = storageKey(pluginId);
   const bag = (): Record<string, unknown> => {

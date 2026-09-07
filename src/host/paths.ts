@@ -1,13 +1,9 @@
-// resolving the focused document's absolute path.
+// the focused document's absolute path.
 //
-// not through `api.docInfo()`: cardmirror builds it as
-// `docId ? {docId, docTitle} : null`, and the doc id only exists once cardmirror
-// has saved the file itself — so it is null for every word-authored .docx, which
-// is exactly the case laymirror is for.
-//
-// the filename chip names the document instead, and `pmd-recent-files` turns
-// that name into a path. it is a history, so it is only ever consulted for a
-// name we already have.
+// not through `api.docInfo()`: a doc id exists only once cardmirror has saved
+// the file itself, so docInfo is null for every word-authored .docx. the
+// filename chip names the document instead, and `pmd-recent-files` turns that
+// name into a path.
 
 import { currentFilename, readRecents, type RecentEntry } from './cardmirror.js';
 import type { DocInfo } from './plugin-api.js';
@@ -36,18 +32,14 @@ export function resolveDocPath(info: DocInfo | null): Resolved {
     (entry) => entry.filename === filename && isDocx(entry),
   ) as Openable[];
 
-  // guessing at another file would rewrite the wrong one, so a name with no
-  // docx behind it fails — but a .docx missing from the history is a different
-  // thing from a .cmir, and only the first can be rescued by asking the user
-  // where the file is. cardmirror writes an entry for a document it loads in
-  // place or saves itself; one it hands to a window it spawned gets none.
+  // a .docx missing from the history is not the same as a .cmir: only the
+  // first can be rescued by asking the user where the file is
   if (named.length === 0) {
     return { kind: 'none', because: DOCX.test(filename) ? 'unlisted' : 'not-a-docx' };
   }
   if (named.length === 1) return { kind: 'ok', path: named[0]!.handle };
 
-  // two files really do share this name: the one opened last is the one in
-  // front of the user, and only a tie is undecidable
+  // two files share this name: the one opened last is the one on screen
   const [first, second] = [...named].sort((a, b) => openedAt(b) - openedAt(a));
   if (openedAt(first!) > openedAt(second!)) return { kind: 'ok', path: first!.handle };
 

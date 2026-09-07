@@ -1,11 +1,10 @@
 // what laymirror remembers between sessions.
 //
 // templates are a library rather than one slot: two documents off two templates
-// can be open at once. a document keeps the template it was marked with; one
-// that has never had a template adopts whichever was used last.
+// can be open at once. one that has never had a template takes the last loaded.
 //
-// cardmirror's storage bag is json in localStorage, so the file travels as
-// base64 and the cap below is what turns a silent quota failure into a message.
+// the storage bag is json in localStorage, so a template travels as base64 and
+// the cap below turns a silent quota failure into a message.
 
 import type { PluginApi } from './host/plugin-api.js';
 import type { Values } from './docx/fields.js';
@@ -148,8 +147,8 @@ export function store(api: PluginApi): Store {
 
     setValues(key, templateId, values) {
       this.setDoc(key, { values });
-      // the next document off the same template starts where this one ended.
-      // merged rather than replaced, so setting one field keeps the others.
+      // the next document off this template starts where this one ended,
+      // merged rather than replaced so setting one field keeps the others
       if (!templateId) return;
       const shared = asValues(defaults()[templateId]);
       api.storage.set(DEFAULTS, { ...defaults(), [templateId]: { ...shared, ...values } });

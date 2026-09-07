@@ -1,9 +1,8 @@
 // the laymirror menu.
 //
-// a plugin cannot put a button on cardmirror's ribbon and cannot add a settings
-// page, so this is a floating panel over the editor. none of laymirror's work
-// shows up in the editor, which is why the panel also reports what the last
-// write to the file actually did.
+// a plugin cannot put a button on the ribbon or add a settings page, so this is
+// a floating panel over the editor. none of laymirror's work shows on screen,
+// which is why the panel also reports what the last write to the file did.
 
 import type { Field, Values } from '../docx/fields.js';
 
@@ -159,7 +158,7 @@ const CSS = `
 
 let host: PanelHost | null = null;
 let onKey: ((event: KeyboardEvent) => void) | null = null;
-/** the outcome the panel last drew, so a new one is flashed rather than quietly
+/** the outcome the panel last drew, so a new one is flashed rather than
  *  swapped in under the button that caused it. */
 let shown: Outcome | null = null;
 
@@ -175,8 +174,8 @@ export function closePanel(): void {
   shown = null;
 }
 
-/** an action can take a file read and a write, and none of it shows up in the
- *  editor — so the button itself has to say it was pressed and is still busy. */
+/** an action can take a file read and a write, none of which shows on screen,
+ *  so the button itself says it was pressed and is still busy. */
 async function press(el: HTMLButtonElement, run: () => void | Promise<void>): Promise<void> {
   if (el.disabled) return;
   const label = el.textContent ?? '';
@@ -226,8 +225,7 @@ function note(
   return el;
 }
 
-/** rebuild the body against whatever the host now reports. called after every
- *  action, so the panel never shows a state the plugin has moved on from. */
+/** rebuild the body against whatever the host now reports, after every action */
 export function refresh(): void {
   const root = document.getElementById(PANEL_ID);
   if (!root || !host) return;
@@ -260,8 +258,7 @@ export function refresh(): void {
   body.append(lay);
 
   // off is off: a document laymirror is not touching has no template, no header
-  // and nothing written to it, and offering all three invites the reasonable
-  // assumption that something is happening
+  // and nothing written to it, and offering all three reads as if it did
   if (!it.on()) {
     body.append(
       note('using cardmirror\u2019s own formatting. turn lay formatting on to apply a template every time you save.'),
@@ -300,15 +297,13 @@ export function refresh(): void {
       caption.textContent = field.label;
       const input = document.createElement('input');
       input.type = 'text';
-      // empty means "leave whatever the template says", shown greyed out as the
-      // placeholder. putting the template's own words in as a *value* meant
-      // applying wrote them straight back, so an edit made to the template was
-      // overwritten by the text laymirror had been showing
+      // empty means "leave whatever the template says", greyed out as the
+      // placeholder. as a value it would be written straight back, overwriting
+      // an edit since made to the template
       input.value = held[field.key] ?? '';
       input.placeholder = field.label;
-      // held as typed rather than on apply, so a plain ⌘S writes what is on
-      // screen. the panel is deliberately not refreshed here: rebuilding it
-      // mid-word would take the caret with it
+      // held as typed, so a plain ⌘S writes what is on screen. no refresh
+      // here: rebuilding the panel mid-word would take the caret with it
       input.addEventListener('input', () => it.onChange(typed(inputs)));
       inputs.set(field.key, input);
       label.append(caption, input);
@@ -348,7 +343,7 @@ function actionRow(it: PanelHost): HTMLDivElement {
   return actions;
 }
 
-/** only the boxes with something in them. an empty box is not a blank header
+/** only the boxes with something in them: an empty box is not a blank header
  *  line, it is "the template's own text is fine". */
 const typed = (inputs: ReadonlyMap<string, HTMLInputElement>): Values => {
   const values: Values = {};

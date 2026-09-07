@@ -1,12 +1,8 @@
-// the save pipeline.
-//
-// cardmirror's exporter rebuilds the package from scratch on every save: its own
-// styles.xml, one hardcoded letter section with 1" margins, and no header, footer
-// or theme. this puts back what the exporter threw away.
+// the save pipeline: put back what cardmirror's exporter threw away.
 //
 // the template is authoritative every time, so a file that has been through word
-// comes out looking exactly like one that has not. the two or three words in the
-// header that do change are typed into laymirror's panel instead.
+// comes out like one that has not. the few words in the header that do change
+// are typed into laymirror's panel.
 
 import { fillFields, type Values } from './fields.js';
 import { writeMarker } from './marker.js';
@@ -53,12 +49,11 @@ function setPStyle(doc: Document, paragraph: Element, styleId: string): void {
   pStyle.setAttribute('w:val', styleId);
 }
 
-/** which type a bare paragraph is, judged by the marks its runs carry.
+/** which type a bare paragraph is, judged by the marks its runs carry: a cite
+ *  paragraph and a card body export with no style at all.
  *
- *  a cite paragraph and a card body export with no style at all, so the marks
- *  inside are the only evidence left. the inference reaches exactly one
- *  paragraph past the last mark: guessing further would indent ordinary prose,
- *  while leaving one bare only renders it as the template's Normal. */
+ *  the inference reaches exactly one paragraph past the last mark — further
+ *  would indent ordinary prose. */
 function classifyBare(
   paragraph: Element,
   openCard: boolean,
@@ -148,9 +143,8 @@ function pointAttachedTemplate(parts: Parts, template: string | null): void {
   );
 }
 
-/** put the template onto a package cardmirror has just written. throws rather
- *  than returning something half-written: this runs against a file the user is
- *  actively saving, and a partial read must never become a partial write. */
+/** put the template onto a package cardmirror has just written. throws on a
+ *  partial read rather than turning it into a partial write. */
 export function applyTemplate(
   bytes: Uint8Array,
   blueprint: Blueprint,
