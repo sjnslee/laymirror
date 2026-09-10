@@ -188,7 +188,7 @@ describe('the panel', () => {
     await click('turn on');
     const shown = panel()!.textContent!;
     expect(shown).toContain('template');
-    expect(shown).toContain('the file on disk');
+    expect(shown).toContain('file status');
   });
 
   it('offers the header fields once a template is loaded', async () => {
