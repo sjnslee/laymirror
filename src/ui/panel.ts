@@ -4,12 +4,13 @@
 // a floating panel over the editor. none of laymirror's work shows on screen,
 // which is why the panel also reports what the last write to the file did.
 
-import type { Field, Values } from '../docx/fields.js';
+import type { Field, Values } from "../docx/fields.js";
 
-const PANEL_ID = 'laymirror-panel';
-const STYLE_ID = 'laymirror-panel-style';
+const PANEL_ID = "laymirror-panel";
+const STYLE_ID = "laymirror-panel-style";
 
-export type Outcome = { ok: true; at: number; template: string } | { ok: false; why: string };
+export type Outcome =
+  { ok: true; at: number; template: string } | { ok: false; why: string };
 
 export interface Action {
   label: string;
@@ -166,7 +167,7 @@ export const isOpen = (): boolean => document.getElementById(PANEL_ID) !== null;
 
 export function closePanel(): void {
   if (onKey) {
-    document.removeEventListener('keydown', onKey, true);
+    document.removeEventListener("keydown", onKey, true);
     onKey = null;
   }
   document.getElementById(PANEL_ID)?.remove();
@@ -176,19 +177,22 @@ export function closePanel(): void {
 
 /** an action can take a file read and a write, none of which shows on screen,
  *  so the button itself says it was pressed and is still busy. */
-async function press(el: HTMLButtonElement, run: () => void | Promise<void>): Promise<void> {
+async function press(
+  el: HTMLButtonElement,
+  run: () => void | Promise<void>,
+): Promise<void> {
   if (el.disabled) return;
-  const label = el.textContent ?? '';
+  const label = el.textContent ?? "";
   // hold the width, or a button shrinks to the ellipsis and back
   el.style.minWidth = `${el.offsetWidth}px`;
   el.disabled = true;
-  el.textContent = '…';
+  el.textContent = "…";
   try {
     await run();
   } finally {
     el.disabled = false;
     el.textContent = label;
-    el.style.minWidth = '';
+    el.style.minWidth = "";
     refresh();
   }
 }
@@ -198,18 +202,18 @@ function button(
   run: () => void | Promise<void>,
   primary = false,
 ): HTMLButtonElement {
-  const el = document.createElement('button');
-  el.type = 'button';
+  const el = document.createElement("button");
+  el.type = "button";
   el.textContent = label;
-  if (primary) el.className = 'lm-primary';
-  el.addEventListener('click', () => void press(el, run));
+  if (primary) el.className = "lm-primary";
+  el.addEventListener("click", () => void press(el, run));
   return el;
 }
 
 function row(label: string, control: HTMLElement): HTMLDivElement {
-  const el = document.createElement('div');
-  el.className = 'lm-row';
-  const name = document.createElement('span');
+  const el = document.createElement("div");
+  el.className = "lm-row";
+  const name = document.createElement("span");
   name.textContent = label;
   el.append(name, control);
   return el;
@@ -217,10 +221,10 @@ function row(label: string, control: HTMLElement): HTMLDivElement {
 
 function note(
   text: string,
-  kind: 'lm-note' | 'lm-problem' | 'lm-done' | 'lm-path' = 'lm-note',
+  kind: "lm-note" | "lm-problem" | "lm-done" | "lm-path" = "lm-note",
 ): HTMLParagraphElement {
-  const el = document.createElement('p');
-  el.className = kind === 'lm-note' ? kind : `lm-note ${kind}`;
+  const el = document.createElement("p");
+  el.className = kind === "lm-note" ? kind : `lm-note ${kind}`;
   el.textContent = text;
   return el;
 }
@@ -231,28 +235,31 @@ export function refresh(): void {
   if (!root || !host) return;
   // a save can land while a header field is being typed into, and rebuilding
   // the panel under the caret would eat the word
-  if (document.activeElement?.tagName === 'INPUT' && root.contains(document.activeElement)) {
+  if (
+    document.activeElement?.tagName === "INPUT" &&
+    root.contains(document.activeElement)
+  ) {
     return;
   }
 
   const it = host;
-  const body = document.createElement('div');
+  const body = document.createElement("div");
 
-  const title = document.createElement('h2');
-  title.className = 'lm-title';
-  title.textContent = 'laymirror';
-  const close = button('×', closePanel);
-  close.className = 'lm-close';
-  const head = document.createElement('div');
-  head.className = 'lm-row';
+  const title = document.createElement("h2");
+  title.className = "lm-title";
+  title.textContent = "laymirror";
+  const close = button("×", closePanel);
+  close.className = "lm-close";
+  const head = document.createElement("div");
+  head.className = "lm-row";
   head.append(title, close);
   body.append(head);
 
-  const lay = document.createElement('section');
+  const lay = document.createElement("section");
   lay.append(
     row(
-      it.on() ? 'lay formatting is on' : 'lay formatting is off',
-      button(it.on() ? 'turn off' : 'turn on', () => it.onToggle(), !it.on()),
+      it.on() ? "lay formatting is on" : "lay formatting is off",
+      button(it.on() ? "turn off" : "turn on", () => it.onToggle(), !it.on()),
     ),
   );
   body.append(lay);
@@ -261,7 +268,9 @@ export function refresh(): void {
   // and nothing written to it, and offering all three reads as if it did
   if (!it.on()) {
     body.append(
-      note('using cardmirror\u2019s own formatting. turn lay formatting on to apply a template every time you save.'),
+      note(
+        "using cardmirror\u2019s own formatting. turn lay formatting on to apply a template every time you save.",
+      ),
       actionRow(it),
     );
     root.replaceChildren(...body.childNodes);
@@ -269,14 +278,20 @@ export function refresh(): void {
   }
 
   const problem = it.problem();
-  if (problem) body.append(note(problem, 'lm-problem'));
+  if (problem) body.append(note(problem, "lm-problem"));
 
-  const template = document.createElement('section');
+  const template = document.createElement("section");
   const name = it.templateName();
   template.append(
-    row('template', button(name ? 'change…' : 'load…', () => it.onLoadTemplate())),
+    row(
+      "template",
+      button(name ? "change…" : "load…", () => it.onLoadTemplate()),
+    ),
     // the path, not the name: the name is the last segment of it
-    note(name ? (it.templatePath() ?? name) : 'none loaded', name ? 'lm-path' : 'lm-note'),
+    note(
+      name ? (it.templatePath() ?? name) : "none loaded",
+      name ? "lm-path" : "lm-note",
+    ),
   );
   body.append(template);
 
@@ -285,26 +300,26 @@ export function refresh(): void {
   const inputs = new Map<string, HTMLInputElement>();
 
   if (fields.length > 0) {
-    const section = document.createElement('section');
-    const heading = document.createElement('h2');
-    heading.textContent = 'header';
+    const section = document.createElement("section");
+    const heading = document.createElement("h2");
+    heading.textContent = "header";
     section.append(heading);
 
     for (const field of fields) {
-      const label = document.createElement('label');
-      label.className = 'lm-field';
-      const caption = document.createElement('span');
+      const label = document.createElement("label");
+      label.className = "lm-field";
+      const caption = document.createElement("span");
       caption.textContent = field.label;
-      const input = document.createElement('input');
-      input.type = 'text';
+      const input = document.createElement("input");
+      input.type = "text";
       // empty means "leave whatever the template says", greyed out as the
       // placeholder. as a value it would be written straight back, overwriting
       // an edit since made to the template
-      input.value = held[field.key] ?? '';
+      input.value = held[field.key] ?? "";
       input.placeholder = field.label;
       // held as typed, so a plain ⌘S writes what is on screen. no refresh
       // here: rebuilding the panel mid-word would take the caret with it
-      input.addEventListener('input', () => it.onChange(typed(inputs)));
+      input.addEventListener("input", () => it.onChange(typed(inputs)));
       inputs.set(field.key, input);
       label.append(caption, input);
       section.append(label);
@@ -312,22 +327,22 @@ export function refresh(): void {
     body.append(section);
   }
 
-  const done = document.createElement('section');
+  const done = document.createElement("section");
   done.append(
     row(
-      'the file on disk',
-      button('apply now', () => it.onApply(typed(inputs)), true),
+      "file status",
+      button("apply now", () => it.onApply(typed(inputs)), true),
     ),
   );
   const outcome = it.outcome();
   const line =
     outcome === null
-      ? note('nothing written yet')
+      ? note("nothing written yet")
       : outcome.ok
-        ? note(`${outcome.template} applied at ${clock(outcome.at)}`, 'lm-done')
-        : note(outcome.why, 'lm-problem');
+        ? note(`${outcome.template} applied at ${clock(outcome.at)}`, "lm-done")
+        : note(outcome.why, "lm-problem");
   // a write that changed nothing on screen is worth pointing at
-  if (outcome !== null && outcome !== shown) line.classList.add('lm-flash');
+  if (outcome !== null && outcome !== shown) line.classList.add("lm-flash");
   shown = outcome;
   done.append(line);
   body.append(done);
@@ -337,9 +352,10 @@ export function refresh(): void {
 }
 
 function actionRow(it: PanelHost): HTMLDivElement {
-  const actions = document.createElement('div');
-  actions.className = 'lm-actions';
-  for (const action of it.actions) actions.append(button(action.label, action.run));
+  const actions = document.createElement("div");
+  actions.className = "lm-actions";
+  for (const action of it.actions)
+    actions.append(button(action.label, action.run));
   return actions;
 }
 
@@ -348,14 +364,17 @@ function actionRow(it: PanelHost): HTMLDivElement {
 const typed = (inputs: ReadonlyMap<string, HTMLInputElement>): Values => {
   const values: Values = {};
   for (const [key, input] of inputs) {
-    if (input.value !== '') values[key] = input.value;
+    if (input.value !== "") values[key] = input.value;
   }
   return values;
 };
 
 /** minutes matter, seconds do not: this answers "did that save go through?" */
 const clock = (at: number): string =>
-  new Date(at).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+  new Date(at).toLocaleTimeString(undefined, {
+    hour: "numeric",
+    minute: "2-digit",
+  });
 
 export function openPanel(next: PanelHost): void {
   if (isOpen()) {
@@ -365,28 +384,28 @@ export function openPanel(next: PanelHost): void {
   }
 
   if (!document.getElementById(STYLE_ID)) {
-    const sheet = document.createElement('style');
+    const sheet = document.createElement("style");
     sheet.id = STYLE_ID;
     sheet.textContent = CSS;
     document.head.append(sheet);
   }
 
-  const root = document.createElement('div');
+  const root = document.createElement("div");
   root.id = PANEL_ID;
-  root.setAttribute('contenteditable', 'false');
+  root.setAttribute("contenteditable", "false");
   document.body.append(root);
 
   host = next;
   refresh();
 
   onKey = (event: KeyboardEvent) => {
-    if (event.key !== 'Escape') return;
+    if (event.key !== "Escape") return;
     // typing in a field: escape should leave the field, not the panel
-    if (document.activeElement?.tagName === 'INPUT') return;
+    if (document.activeElement?.tagName === "INPUT") return;
     event.preventDefault();
     event.stopPropagation();
     closePanel();
   };
   // capture, because cardmirror binds escape too
-  document.addEventListener('keydown', onKey, true);
+  document.addEventListener("keydown", onKey, true);
 }
