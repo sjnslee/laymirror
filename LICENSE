@@ -1,16 +1,4 @@
-laymirror is licensed under the **PolyForm Noncommercial License 1.0.0**.
-The full license text follows below; the canonical version lives at
-<https://polyformproject.org/licenses/noncommercial/1.0.0/>.
-
-Required Notice: Copyright (c) 2026 Shane Lee.
-
-laymirror is a plugin for CardMirror (<https://github.com/ant981228/cardmirror>),
-copyright (c) 2026 Anthony Trufanov, which is itself licensed under the
-PolyForm Noncommercial License 1.0.0. Parts of this project — in particular
-the style-mapping tables in `src/profile/mapping.ts` — are derived from
-CardMirror's published source in order to interoperate with it, and are used
-here under that license's noncommercial grant. laymirror is not affiliated
-with or endorsed by the CardMirror project.
+Required Notice: Copyright 2026 Shane Lee.
 
 ----
 
