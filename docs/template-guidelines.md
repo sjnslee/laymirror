@@ -21,6 +21,8 @@ Template must have styles set for each style in Cardmirror.
 | Underline       | Underline, Debate Underline, Debate Highlighted, Dotted Underline or Style Bold Underline |
 | Cite            | Author-Date or Style Style Bold + 12 pt                                                   |
 | Emphasis        | Emphasis                                                                                  |
+| Analytic        | AnalyticChar                                                                              |
+| Undertag        | UndertagChar                                                                              |
 
 If page breaks are desired for printing, set one of the headings to **page break before** and use
 the heading at the start of each page.
@@ -31,8 +33,7 @@ The plugin will directly copy over all headers and footers from the template fil
 on the output file.
 
 However, editable fields can be inserted in the header on the template. This allows these fields in
-the header to be modified within the plugin interface. These fields should be are demarcated with the
-following:
+the header to be modified within the plugin interface. Demarcate them as follows:
 
 Mark each editable field with a zero width character on both sides, `‹zw›` below:
 

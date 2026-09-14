@@ -1,7 +1,7 @@
-Formatting plugin for [Cardmirror](https://github.com/ant981228/cardmirror).
+Formatting plugin for [CardMirror](https://github.com/ant981228/cardmirror).
 Automatically formats output docx file based on user's uploaded custom template
 
-- File specifics (e.g. header, header text, fonts, page setup, etc.) can be adjusted in the plugin interface
+- Header text can be adjusted in the plugin interface. Fonts, page setup, styles and theme come from the template
 - Applied to docx file on every save
 
 Built for the purpose of switching between different format guidelines and implementing printable functionality,
@@ -11,7 +11,7 @@ particularly with printed lay debate evidence
 
 Desktop only.
 
-Cardmirror installs a plugin from a github release's assets, but only from
+CardMirror installs a plugin from a github release's assets, but only from
 repositories on its curated list. As a non whitelisted plugin, installation
 requires building and loading separately:
 
@@ -25,15 +25,23 @@ file…" → `plugin.js`.
 
 ## Usage
 
-cmd+shift+l to open interface
+cmd+shift+l to open interface (cmd+alt+l if CardMirror has taken the first)
 
-Keybind can be changed through Cardmirror
+Keybind can be changed through CardMirror
+
+Also in the command palette:
+
+- `laymirror: open`
+- `laymirror: turn lay formatting on or off`
+- `laymirror: apply the template now`
+- `laymirror: point at the open document on disk`
+- `laymirror: diagnostics`
 
 ## Templates
 
 Guidelines for creation of templates and how they are processed by the plugin are included here: [docs/template-guidelines.md](docs/template-guidelines.md)
 
-An example of a template for lay debate is included here: [docs/template-example.docx](docs)
+An example of a template for lay debate is included here: [docs/template-example.docx](docs/template-example.docx)
 
 ## Dev
 
