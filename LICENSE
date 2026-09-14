@@ -1,4 +1,32 @@
-Required Notice: Copyright 2026 Shane Lee.
+laymirror is licensed under the **PolyForm Noncommercial License 1.0.0**.
+The full license text follows below; the canonical version lives at
+<https://polyformproject.org/licenses/noncommercial/1.0.0/>.
+
+Required Notice: Copyright (c) 2026 Shane Lee.
+
+laymirror is a plugin for CardMirror (<https://github.com/ant981228/cardmirror>),
+which is itself licensed under the PolyForm Noncommercial License 1.0.0. Parts
+of this project — in particular the legacy style-mapping tables in
+`src/template/styles.ts`, derived from CardMirror's `src/ooxml/legacy-styles.ts`
+and `src/ooxml/style-clean/template-styles.ts` — are taken from CardMirror's
+published source in order to interoperate with it, and are used here under that
+license's noncommercial grant. laymirror is not affiliated with or endorsed by
+the CardMirror project.
+
+That license requires passing along the licensor's own notice, which follows
+verbatim:
+
+> Required Notice: Copyright (c) 2026 Anthony Trufanov. CardMirror is
+> built on ProseMirror (<https://prosemirror.net/>), the rich-text
+> editor framework by Marijn Haverbeke (<https://marijnhaverbeke.nl/>),
+> used under the MIT License. ProseMirror's copyright notices are
+> preserved in the project's `node_modules/` and acknowledged in the
+> README. The application's interface icons are from the Untitled UI
+> free icons (<https://www.untitledui.com/free-icons>), © Untitled UI,
+> used under their free license. Third-party attributions and license
+> terms are collected in `THIRD-PARTY-NOTICES.md`.
+
+laymirror's own bundled third-party notices are in `THIRD-PARTY-NOTICES.md`.
 
 ----
 

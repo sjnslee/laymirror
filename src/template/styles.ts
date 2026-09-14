@@ -33,7 +33,12 @@ export type RunType =
   | 'analytic_mark'
   | 'undertag_mark';
 
-/** lowercased w:name -> legacy role. */
+/** lowercased w:name -> legacy role.
+ *
+ *  this table and `LEGACY_BY_ID` are taken from cardmirror's
+ *  `src/ooxml/legacy-styles.ts` (`BY_NAME` and `BY_ID`). they have to match it
+ *  entry for entry or a template maps to styles the importer will not read
+ *  back, so they are copied rather than paraphrased. see LICENSE. */
 export const LEGACY_BY_NAME: Record<string, string> = {
   tags: 'tag',
   tag: 'tag',
@@ -67,7 +72,8 @@ export const LEGACY_BY_NAME: Record<string, string> = {
   'style style bold + 12 pt': 'char-cite',
 };
 
-/** styleId -> legacy role, consulted only after the name misses. */
+/** styleId -> legacy role, consulted only after the name misses. cardmirror's
+ *  `BY_ID`; see the note on `LEGACY_BY_NAME`. */
 export const LEGACY_BY_ID: Record<string, string> = {
   Tags: 'tag',
   BlockHeadings: 'heading',
@@ -86,7 +92,10 @@ export const LEGACY_BY_ID: Record<string, string> = {
 /** what cardmirror's *exporter* writes for each type — not the same question as
  *  what its importer reads back. `null` means no `w:pStyle` at all, so a cite
  *  paragraph and a card body have to be recognised from their runs instead.
- *  note `tag` leaves as `Heading4`, not as any style named "tag". */
+ *  note `tag` leaves as `Heading4`, not as any style named "tag".
+ *
+ *  transposed from cardmirror's `STYLE_RENAME_MAP` in
+ *  `src/ooxml/style-clean/template-styles.ts`; see LICENSE. */
 export const EXPORT_STYLE_BY_TYPE: Record<BlockType | RunType, string | null> = {
   pocket: 'Heading1',
   hat: 'Heading2',
