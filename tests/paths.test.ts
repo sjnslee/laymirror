@@ -39,7 +39,7 @@ describe('resolveDocPath', () => {
     ]);
     showing('neg block.docx');
 
-    expect(resolveDocPath(null)).toEqual({ kind: 'ok', path: '/docs/neg block.docx' });
+    expect(resolveDocPath(null)).toMatchObject({ kind: 'ok', path: '/docs/neg block.docx' });
   });
 
   it('works with no docInfo at all, which is the normal case', () => {
@@ -47,19 +47,19 @@ describe('resolveDocPath', () => {
     recents([entry('1ac.docx', '/docs/1ac.docx')]);
     showing('1ac.docx');
 
-    expect(resolveDocPath(null)).toEqual({ kind: 'ok', path: '/docs/1ac.docx' });
+    expect(resolveDocPath(null)).toMatchObject({ kind: 'ok', path: '/docs/1ac.docx' });
   });
 
   it('falls back to the window title when the chip is not there', () => {
     recents([entry('1ac.docx', '/docs/1ac.docx')]);
     document.title = '1ac.docx — CardMirror';
 
-    expect(resolveDocPath(null)).toEqual({ kind: 'ok', path: '/docs/1ac.docx' });
+    expect(resolveDocPath(null)).toMatchObject({ kind: 'ok', path: '/docs/1ac.docx' });
   });
 
   it('takes docTitle when cardmirror does have an id for the document', () => {
     recents([entry('1ac.docx', '/docs/1ac.docx')]);
-    expect(resolveDocPath({ docId: 'x', docTitle: '1ac.docx' })).toEqual({
+    expect(resolveDocPath({ docId: 'x', docTitle: '1ac.docx' })).toMatchObject({
       kind: 'ok',
       path: '/docs/1ac.docx',
     });
@@ -104,7 +104,7 @@ describe('resolveDocPath', () => {
     ]);
     showing('1ac.docx');
 
-    expect(resolveDocPath(null)).toEqual({ kind: 'ok', path: '/a/1ac.docx' });
+    expect(resolveDocPath(null)).toMatchObject({ kind: 'ok', path: '/a/1ac.docx' });
   });
 
   it('gives up only when two of one name are genuinely tied', () => {
@@ -115,6 +115,32 @@ describe('resolveDocPath', () => {
       kind: 'ambiguous',
       paths: ['/a/1ac.docx', '/b/1ac.docx'],
     });
+  });
+
+  // the owner's review: 1ac.docx opened from folder b with no history entry,
+  // while folder a's 1ac.docx is in the history
+  it('takes the file the user pointed at over an older one of the same name', () => {
+    recents([entry('1ac.docx', '/a/1ac.docx', 5)]);
+    showing('1ac.docx');
+    const pointed = { path: '/b/1ac.docx', at: 8 };
+
+    expect(resolveDocPath(null, () => pointed)).toMatchObject({ kind: 'ok', path: '/b/1ac.docx' });
+  });
+
+  it('goes back to the history once a newer open says otherwise', () => {
+    recents([entry('1ac.docx', '/a/1ac.docx', 9)]);
+    showing('1ac.docx');
+    const pointed = { path: '/b/1ac.docx', at: 8 };
+
+    expect(resolveDocPath(null, () => pointed)).toMatchObject({ kind: 'ok', path: '/a/1ac.docx' });
+  });
+
+  it('finds a pointed at file cardmirror left no history for', () => {
+    recents([]);
+    showing('1ac.docx');
+    const pointed = { path: '/b/1ac.docx', at: 1 };
+
+    expect(resolveDocPath(null, () => pointed)).toMatchObject({ kind: 'ok', path: '/b/1ac.docx' });
   });
 
   it('survives a recents list that is missing or corrupt', () => {

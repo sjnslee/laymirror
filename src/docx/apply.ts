@@ -105,22 +105,15 @@ function applyStyles(documentXml: string, blueprint: Blueprint): string {
 }
 
 /** word matches an attached template by basename out of the user's templates
- *  folder, so a basename is both the safe target and the working one. */
+ *  folder, so a basename is both the safe target and the working one.
+ *
+ *  only where cardmirror's export has none: the one it writes is what lights up
+ *  verbatim's ribbon, and replacing it loses that for teammates on verbatim. */
 function pointAttachedTemplate(parts: Parts, template: string | null): void {
   if (!template) return;
 
   const rels = readText(parts, SETTINGS_RELS);
-  if (rels?.includes(TEMPLATE_REL_TYPE)) {
-    writeText(
-      parts,
-      SETTINGS_RELS,
-      rels.replace(
-        /(<Relationship\b[^>]*attachedTemplate"[^>]*\bTarget=")[^"]*(")/,
-        `$1${template}$2`,
-      ),
-    );
-    return;
-  }
+  if (rels?.includes(TEMPLATE_REL_TYPE)) return;
 
   const settings = readText(parts, SETTINGS);
   if (!settings) return;

@@ -1,5 +1,5 @@
 // every undocumented cardmirror internal lives here and nowhere else, so an
-// upgrade has one file to check. read off the shipped app.asar at 1.3.0.
+// upgrade has one file to check. read off cardmirror's source at 1.8.0 and 1.10.0.
 
 export const LS = { recents: 'pmd-recent-files', plugins: 'pmd-plugins' } as const;
 
@@ -35,21 +35,16 @@ export function currentFilename(): string | null {
   return title || null;
 }
 
-/** whether cardmirror still has laymirror switched on.
- *
- *  api v1 has no unload hook, and a bundle that has run cannot be unloaded, so
- *  a plugin switched off mid session keeps whatever timers it started. reading
- *  the enabled flag is what lets laymirror stop writing files on its own. an
- *  unreadable or absent blob reads as enabled: the flag is written when the user
- *  toggles, and refusing to work because it is missing would be worse. */
-export function isEnabled(pluginId: string): boolean {
+/** cardmirror's enabled flag for a plugin: true, false, or null when it has
+ *  none. an install sets it, the settings switch flips it, uninstall clears it,
+ *  and "load plugin from file" never writes one. */
+export function enabledFlag(pluginId: string): boolean | null {
   try {
     const raw: unknown = JSON.parse(localStorage.getItem(LS.plugins) ?? 'null');
-    const flags = (raw as { enabled?: Record<string, unknown> } | null)?.enabled;
-    if (!flags || typeof flags !== 'object') return true;
-    return flags[pluginId] !== false;
+    const flag = (raw as { enabled?: Record<string, unknown> } | null)?.enabled?.[pluginId];
+    return typeof flag === 'boolean' ? flag : null;
   } catch {
-    return true;
+    return null;
   }
 }
 

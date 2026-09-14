@@ -10,7 +10,7 @@ beforeEach(() => {
   (window as unknown as { electronAPI: unknown }).electronAPI = {
     statFile: stat,
     readFileAtPath: vi.fn(),
-    writeFileAtPath: vi.fn(),
+    saveExisting: vi.fn(),
   };
   // jsdom reports no focus, which would put every test on the backed-off poll
   vi.spyOn(document, 'hasFocus').mockReturnValue(true);

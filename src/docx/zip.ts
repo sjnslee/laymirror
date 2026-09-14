@@ -4,6 +4,10 @@ export type Parts = Record<string, Uint8Array>;
 
 export const CONTENT_TYPES = '[Content_Types].xml';
 
+/** what word stamps on every entry. a fixed time makes the same parts zip to
+ *  the same bytes, so an apply that changes nothing can be told apart. */
+const ENTRY_TIME = new Date(1980, 0, 1);
+
 /** word rejects a package whose first entry isn't `[Content_Types].xml`, and
  *  a part added to the map lands last, so ordering is enforced on the way
  *  out rather than trusted. */
@@ -13,7 +17,7 @@ export function zip(parts: Parts): Uint8Array {
   for (const [name, bytes] of Object.entries(parts)) {
     if (name !== CONTENT_TYPES) ordered[name] = bytes;
   }
-  return zipSync(ordered, { level: 6 });
+  return zipSync(ordered, { level: 6, mtime: ENTRY_TIME });
 }
 
 export function unzip(bytes: Uint8Array): Parts {

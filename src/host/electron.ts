@@ -1,8 +1,15 @@
-// the file calls the save pipeline stands on, read off the preload at 1.3.0.
+// the file calls the save pipeline stands on, read off the preload at 1.8.0 and
+// 1.10.0.
 //
 // `readFileAtPath` is scoped to paths the user has put in play and serves only
 // .cmir/.docx, so a .dotx or .docm arrives through `openFile` — the os picker,
-// which grants read scope on the way out. writes are unscoped.
+// which grants read scope on the way out.
+//
+// writes go through `saveExisting`, cardmirror's own in-place save. since 1.8.0,
+// the manifest's floor, it refuses a path this window does not have open, and a file changed on disk since the
+// window last read or wrote it, and it moves the window's baseline to the bytes
+// written, so cardmirror's next save does not read laymirror's write as someone
+// else's and keep both as a conflicted copy.
 
 export interface FileStat {
   mtimeMs: number;
@@ -23,7 +30,7 @@ interface ElectronApi {
   statFile(path: string): Promise<FileStat | null>;
   openFile?(opts: { filters: Filters }): Promise<PickedFile | null>;
   readFileAtPath(path: string): Promise<ReadFile | null>;
-  writeFileAtPath(path: string, bytes: Uint8Array): Promise<void>;
+  saveExisting(path: string, bytes: Uint8Array): Promise<void>;
 }
 
 function api(): ElectronApi | null {
@@ -37,7 +44,7 @@ export function hasFileApi(): boolean {
     !!a &&
     typeof a.statFile === 'function' &&
     typeof a.readFileAtPath === 'function' &&
-    typeof a.writeFileAtPath === 'function'
+    typeof a.saveExisting === 'function'
   );
 }
 
@@ -49,10 +56,10 @@ export async function readFile(path: string): Promise<ReadFile | null> {
   return (await api()?.readFileAtPath(path)) ?? null;
 }
 
-export async function writeFile(path: string, bytes: Uint8Array): Promise<void> {
+export async function saveExisting(path: string, bytes: Uint8Array): Promise<void> {
   const a = api();
   if (!a) throw new Error('electronAPI unavailable — desktop only');
-  await a.writeFileAtPath(path, bytes);
+  await a.saveExisting(path, bytes);
 }
 
 type Filters = { name: string; extensions: string[] }[];

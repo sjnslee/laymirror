@@ -7,6 +7,7 @@
 // the cap below turns a silent quota failure into a message.
 
 import type { PluginApi } from './host/plugin-api.js';
+import type { Located } from './host/paths.js';
 import type { Values } from './docx/fields.js';
 import type { Template } from './template/template.js';
 
@@ -14,21 +15,23 @@ const TEMPLATES = 'templates';
 const LAST_TEMPLATE = 'lastTemplate';
 const DEFAULTS = 'defaults';
 const DOCS = 'docs';
+const LOCATED = 'located';
 
-/** roughly a fifth of a chromium origin's localStorage */
-export const TEMPLATE_LIMIT = 2_000_000;
+/** every kept template together, about a tenth of a chromium origin's
+ *  localStorage once base64. the bag shares that origin with cardmirror's own
+ *  settings and recent files, whose writes fail silently when it is full. */
+export const TEMPLATE_LIMIT = 1_000_000;
 
+/** keyed by the document's full path, so two files that share a name never
+ *  share a switch, a template or a header. */
 export interface DocState {
   templateId: string | null;
   /** what the user typed into this document's header fields. */
   values: Values;
   on: boolean;
-  /** where this document was last found on disk. cardmirror's history is the
-   *  first answer; this is what stands in when it has no entry to give. */
-  path: string | null;
 }
 
-const EMPTY: DocState = { templateId: null, values: {}, on: false, path: null };
+const EMPTY: DocState = { templateId: null, values: {}, on: false };
 
 const asRecord = (value: unknown): Record<string, unknown> =>
   value && typeof value === 'object' && !Array.isArray(value)
@@ -64,7 +67,9 @@ export interface Store {
   /** name and path without the bytes: decoding a template runs to megabytes of
    *  base64, and most callers only want to say which one is loaded. */
   templateInfo(id: string | null): { name: string; path: string | null } | null;
-  addTemplate(template: Template): void;
+  /** false when the library would go over `TEMPLATE_LIMIT`, even after
+   *  dropping templates no document uses. */
+  addTemplate(template: Template): boolean;
   lastTemplateId(): string | null;
   doc(key: string | null): DocState;
   setDoc(key: string, patch: Partial<DocState>): void;
@@ -72,6 +77,9 @@ export interface Store {
    *  last used with the same template. */
   valuesFor(key: string | null, templateId: string | null): Values;
   setValues(key: string, templateId: string | null, values: Values): void;
+  /** the path last pointed at, or found, for a filename. */
+  located(filename: string): Located | null;
+  setLocated(filename: string, located: Located): void;
 }
 
 export function store(api: PluginApi): Store {
@@ -108,15 +116,26 @@ export function store(api: PluginApi): Store {
     },
 
     addTemplate(template) {
+      const docx = encode(template.docx);
+      const inUse = new Set(
+        Object.values(docs()).map((state) => asRecord(state)['templateId']),
+      );
+      // a template no document points at is only taking room
+      const kept = Object.entries(templates()).filter(
+        ([id]) => id !== template.id && inUse.has(id),
+      );
+      // base64 is four characters for every three bytes
+      const size = (base64: unknown): number =>
+        typeof base64 === 'string' ? Math.floor((base64.length * 3) / 4) : 0;
+      const total = kept.reduce((sum, [, record]) => sum + size(asRecord(record)['docx']), 0);
+      if (total + size(docx) > TEMPLATE_LIMIT) return false;
+
       api.storage.set(TEMPLATES, {
-        ...templates(),
-        [template.id]: {
-          name: template.name,
-          path: template.path,
-          docx: encode(template.docx),
-        },
+        ...Object.fromEntries(kept),
+        [template.id]: { name: template.name, path: template.path, docx },
       });
       api.storage.set(LAST_TEMPLATE, template.id);
+      return true;
     },
 
     lastTemplateId() {
@@ -131,7 +150,6 @@ export function store(api: PluginApi): Store {
         templateId: typeof state['templateId'] === 'string' ? state['templateId'] : null,
         values: asValues(state['values']),
         on: state['on'] === true,
-        path: typeof state['path'] === 'string' ? state['path'] : null,
       };
     },
 
@@ -152,6 +170,17 @@ export function store(api: PluginApi): Store {
       // field is absent from it, so a merge would bring its old text back
       if (!templateId) return;
       api.storage.set(DEFAULTS, { ...defaults(), [templateId]: values });
+    },
+
+    located(filename) {
+      const record = asRecord(asRecord(api.storage.get(LOCATED))[filename]);
+      return typeof record['path'] === 'string' && typeof record['at'] === 'number'
+        ? { path: record['path'], at: record['at'] }
+        : null;
+    },
+
+    setLocated(filename, located) {
+      api.storage.set(LOCATED, { ...asRecord(api.storage.get(LOCATED)), [filename]: located });
     },
   };
 }

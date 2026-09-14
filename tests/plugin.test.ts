@@ -8,6 +8,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { makeExport, makeTemplate } from './fixture.js';
 import { stubStorage } from './dom.js';
 import { readText, unzip, writeText, zip } from '../src/docx/zip.js';
+import { writeMarker } from '../src/docx/marker.js';
 import type { Command, PluginDefinition, PluginApi } from '../src/host/plugin-api.js';
 
 const PATH = '/Users/x/Documents/1ac.docx';
@@ -75,7 +76,7 @@ async function boot({ listed = true } = {}): Promise<Host> {
         }
         return null;
       },
-      writeFileAtPath: async (path: string, bytes: Uint8Array) => {
+      saveExisting: async (path: string, bytes: Uint8Array) => {
         if (path === PATH) disk = bytes;
         return undefined;
       },
@@ -289,6 +290,24 @@ describe('applying the header', () => {
     expect(field().value).toBe('');
   });
 
+  // cardmirror's own save refuses a path this window does not have open, which
+  // is what stops a same named file in another folder being rewritten
+  it('writes nothing to a file this window does not have open', async () => {
+    (window as unknown as { electronAPI: Record<string, unknown> }).electronAPI.saveExisting =
+      async () => {
+        throw new Error(
+          `Error invoking remote method 'host:save-existing': Error: EMODIFIED: "1ac.docx" ` +
+            'has no baseline in this window (it was not read here, or was restored without one)',
+        );
+      };
+    const before = host.disk();
+    await host.run('laymirror.panel');
+    await click('turn on');
+    await click('load…');
+    expect(host.disk()).toBe(before);
+    expect(host.said()).toContain('press locate');
+  });
+
   it('remembers it for the next time the panel opens', async () => {
     await host.run('laymirror.panel');
     await click('turn on');
@@ -346,29 +365,32 @@ describe('a document cardmirror never listed', () => {
     host = await boot({ listed: false });
   });
 
+  // its state is kept under its path, so there is nothing to switch on until
+  // the file is found
   it('says the file cannot be placed, not that it is the wrong kind', async () => {
     await host.run('laymirror.panel');
     await click('turn on');
-    expect(panel()!.textContent).toContain('press locate');
+    expect(host.said()).toContain('press locate');
+    expect(panel()!.textContent).toContain('lay formatting is off');
   });
 
   it('applies once the user has pointed at it', async () => {
     await host.run('laymirror.panel');
-    await click('turn on');
-    await click('load…');
     host.pickNext({ name: '1ac.docx', bytes: new Uint8Array(), handle: PATH });
     await click('locate…');
+    await click('turn on');
+    await click('load…');
     await click('apply now');
     expect(readText(unzip(host.disk()), 'word/header1.xml')).toContain('Team ');
   });
 
   it('refuses a file that is not the open document', async () => {
     await host.run('laymirror.panel');
-    await click('turn on');
     host.pickNext({ name: 'somebody else.docx', bytes: new Uint8Array(), handle: '/x/y.docx' });
     await click('locate…');
     expect(host.said()).toContain('somebody else.docx');
-    expect(panel()!.textContent).toContain('press locate');
+    await click('turn on');
+    expect(host.said()).toContain('press locate');
   });
 });
 
@@ -433,6 +455,58 @@ describe('between documents and sessions', () => {
     expect(host.said()).toContain('too large');
   });
 
+  it('keeps two files that share a name apart', async () => {
+    await turnOnAndLoad();
+    await host.run('laymirror.panel');
+
+    localStorage.setItem(
+      'pmd-recent-files',
+      JSON.stringify([
+        { handle: '/Users/x/Elsewhere/1ac.docx', filename: '1ac.docx', format: 'docx', lastOpenedAt: 9 },
+        { handle: PATH, filename: '1ac.docx', format: 'docx', lastOpenedAt: 2 },
+      ]),
+    );
+    await host.run('laymirror.panel');
+    expect(panel()!.textContent).toContain('lay formatting is off');
+  });
+
+  /** 2ac.docx as someone else's laymirror left it: marked with their template. */
+  const markedWith = (templateId: string) => {
+    const parts = unzip(makeExport());
+    writeMarker(parts, templateId);
+    const bytes = zip(parts);
+    const electron = (window as unknown as { electronAPI: Record<string, unknown> }).electronAPI;
+    const real = electron.readFileAtPath as (path: string) => Promise<unknown>;
+    electron.readFileAtPath = async (path: string) =>
+      path === SECOND ? { name: '2ac.docx', bytes, handle: SECOND, format: 'docx' } : real(path);
+  };
+
+  // the marker is bytes in a file, and one out of an email carries it as
+  // readily as one a teammate sent: switching on starts rewriting that file
+  it('does not switch a marked document on by itself', async () => {
+    await turnOnAndLoad();
+    await host.run('laymirror.panel');
+
+    markedWith('template:lay.docx');
+    openAnother();
+    await host.run('laymirror.panel');
+    await vi.waitFor(() => expect(host.said()).toContain('turn lay formatting on to keep it'));
+    expect(panel()!.textContent).toContain('lay formatting is off');
+  });
+
+  // or a teammate's file is restyled with whatever this machine loaded last
+  it('never gives a marked document a template other than its own', async () => {
+    await turnOnAndLoad();
+    await host.run('laymirror.panel');
+
+    markedWith('template:theirs.docx');
+    openAnother();
+    await host.run('laymirror.panel');
+    await vi.waitFor(() => expect(host.said()).toContain('not loaded here'));
+    await click('turn on');
+    expect(host.said()).toContain('load a template next');
+  });
+
   // laymirror rewrites the file it is pointed at, so adopting one nobody asked
   // it to touch is the thing it must never do
   it('does not turn a new document on by itself', async () => {
@@ -448,7 +522,7 @@ describe('between documents and sessions', () => {
 describe('holding what is typed', () => {
   const held = (): Record<string, string> => {
     const bag = JSON.parse(localStorage.getItem('plugin:laymirror') || '{}');
-    return bag.docs?.['1ac.docx']?.values ?? {};
+    return bag.docs?.[PATH]?.values ?? {};
   };
 
   const typeInto = async (text: string): Promise<HTMLInputElement> => {

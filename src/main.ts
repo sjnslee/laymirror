@@ -4,15 +4,15 @@
 
 import { applyTemplate } from './docx/apply.js';
 import { clearMarker, readMarker } from './docx/marker.js';
-import { isDocx, unzip, zip, type Parts } from './docx/zip.js';
-import { currentFilename, isEnabled } from './host/cardmirror.js';
+import { isDocx, unzip, zip } from './docx/zip.js';
+import { currentFilename, enabledFlag } from './host/cardmirror.js';
 import {
   DOCX_FILES,
   hasFileApi,
   openFile,
   readFile,
+  saveExisting,
   statFile,
-  writeFile,
   WORD_FILES,
 } from './host/electron.js';
 import { resolveDocPath } from './host/paths.js';
@@ -41,8 +41,15 @@ let syncing: ReturnType<typeof setInterval> | null = null;
 /** parsing a template is a few ms of unzip; a save should not pay for it twice */
 const blueprints = new Map<string, Blueprint>();
 
-/** keyed by name, not path: a path can be missing while the document is open */
-const docKey = (): string | null => currentFilename();
+/** the name cardmirror shows for the open document. */
+const docName = (): string | null => currentFilename();
+
+/** the open document's full path, which is what its state is kept under. null
+ *  when laymirror cannot say which file it is. */
+function docKey(api: PluginApi): string | null {
+  const found = locate(api);
+  return 'path' in found ? found.path : null;
+}
 
 function blueprintFor(bag: Store, templateId: string | null): Blueprint | null {
   if (!templateId) return null;
@@ -61,47 +68,44 @@ function blueprintFor(bag: Store, templateId: string | null): Blueprint | null {
 const templateIdFor = (bag: Store, key: string | null): string | null =>
   bag.doc(key).templateId ?? bag.lastTemplateId();
 
-type Located = { path: string } | { error: string };
+type Found = { path: string } | { error: string };
 
 const UNLISTED =
   'cardmirror has not said where this file is — press locate and point at it';
 
-/** last resolved path per key, so an unchanged resolution does not rewrite the
+/** last path stored per name, so an unchanged answer does not rewrite the
  *  storage bag on every tick. */
 const knownPath = new Map<string, string>();
 
-function remember(api: PluginApi, path: string): void {
-  const key = docKey();
-  if (!key || knownPath.get(key) === path) return;
-  knownPath.set(key, path);
-  store(api).setDoc(key, { path });
+/** keep the answer: the history holds ten files, and one that drops out of it
+ *  while open still has to be found. */
+function remember(api: PluginApi, path: string, at: number): void {
+  const name = docName();
+  if (!name || knownPath.get(name) === path) return;
+  knownPath.set(name, path);
+  store(api).setLocated(name, { path, at });
 }
 
-function locate(api: PluginApi): Located {
+function locate(api: PluginApi): Found {
   if (!hasFileApi()) return { error: 'laymirror only works in the desktop app' };
 
-  const found = resolveDocPath(api.docInfo());
+  const bag = store(api);
+  const found = resolveDocPath(api.docInfo(), (name) => bag.located(name));
   if (found.kind === 'ok') {
-    remember(api, found.path);
+    remember(api, found.path, found.at);
     return { path: found.path };
   }
   if (found.kind === 'ambiguous') {
     return { error: 'two open files have this name, so laymirror cannot tell them apart' };
   }
 
-  // no history entry for a document cardmirror opened into a window it spawned,
-  // so the path the user pointed at once stands in for it
-  if (found.because === 'unlisted') {
-    const held = store(api).doc(docKey()).path;
-    if (held) return { path: held };
-    return { error: UNLISTED };
-  }
-
   return {
     error:
-      found.because === 'not-a-docx'
-        ? 'this document is not a .docx — save it as one first'
-        : 'no document is open',
+      found.because === 'unlisted'
+        ? UNLISTED
+        : found.because === 'not-a-docx'
+          ? 'this document is not a .docx — save it as one first'
+          : 'no document is open',
   };
 }
 
@@ -129,20 +133,75 @@ async function reread(bag: Store, templateId: string): Promise<void> {
 
   const result = read(file.bytes, info.name);
   if (!result.ok) return;
-
-  bag.addTemplate({ id: templateId, name: info.name, path: info.path, docx: file.bytes });
+  // grown past the room left: the stored copy is still good
+  if (!bag.addTemplate({ id: templateId, name: info.name, path: info.path, docx: result.kept })) {
+    return;
+  }
   blueprints.set(templateId, result.blueprint);
   if (stat) takenAt.set(templateId, stat.mtimeMs);
+}
+
+const SAVED_MEANWHILE =
+  'the document was saved again while laymirror was writing — nothing was overwritten';
+
+/** why a write did not happen, in words a user can act on. */
+function refused(err: unknown, path: string): string {
+  const message = err instanceof Error ? err.message : String(err);
+  if (/no baseline in this window/.test(message)) {
+    return `this window does not have ${path} open — press locate and point at the open file`;
+  }
+  if (/EMODIFIED/.test(message)) return 'the file changed on disk — laymirror left it alone';
+  return message;
+}
+
+const same = (a: Uint8Array, b: Uint8Array): boolean =>
+  a.length === b.length && a.every((byte, i) => byte === b[i]);
+
+type Written = { ok: true } | { ok: false; why: string };
+
+/** read the document, change it, and write it back. cardmirror can save again
+ *  while a large file is still being rewritten, and writing then would put the
+ *  older contents over the newer save, so the file has to be as it was read. */
+async function rewrite(
+  path: string,
+  change: (bytes: Uint8Array) => Uint8Array,
+): Promise<Written> {
+  const before = await statFile(path).catch(() => null);
+  const file = await readFile(path);
+  if (!before || !file) {
+    return { ok: false, why: 'cardmirror would not let laymirror read the file' };
+  }
+
+  try {
+    const bytes = change(file.bytes);
+    // still a write to cardmirror, and on a synced folder a change for every
+    // other machine with it open
+    if (same(bytes, file.bytes)) return { ok: true };
+
+    const now = await statFile(path).catch(() => null);
+    if (!now || now.mtimeMs !== before.mtimeMs || now.size !== before.size) {
+      // the newer save is the watcher's to pick up
+      return { ok: false, why: SAVED_MEANWHILE };
+    }
+
+    await saveExisting(path, bytes);
+    // absorb our own write, or the watcher reports it back as the user saving
+    await watcher?.resync();
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, why: refused(err, path) };
+  }
 }
 
 /** put the template onto the file on disk. failures are recorded rather than
  *  swallowed: a silent no-op and a working plugin look identical on screen. */
 async function applyOnce(api: PluginApi, fresh = false): Promise<Outcome> {
   const bag = store(api);
-  const key = docKey();
-  const templateId = templateIdFor(bag, key);
+  const found = locate(api);
+  if ('error' in found) return record({ ok: false, why: found.error });
 
-  if (!key) return record({ ok: false, why: 'no document is open' });
+  const key = found.path;
+  const templateId = templateIdFor(bag, key);
   if (!templateId) return record({ ok: false, why: 'no template loaded — load one first' });
 
   // asked for by hand: go back to the file first. a background save does not,
@@ -152,32 +211,15 @@ async function applyOnce(api: PluginApi, fresh = false): Promise<Outcome> {
   const blueprint = blueprintFor(bag, templateId);
   if (!blueprint) return record({ ok: false, why: 'no template loaded — load one first' });
 
-  const located = locate(api);
-  if ('error' in located) return record({ ok: false, why: located.error });
-
-  const file = await readFile(located.path);
-  if (!file) {
-    return record({ ok: false, why: 'cardmirror would not let laymirror read the file' });
-  }
-
-  try {
-    const bytes = applyTemplate(
-      file.bytes,
-      blueprint,
-      bag.valuesFor(key, templateId),
-      templateId,
-    );
-    await writeFile(located.path, bytes);
-    // absorb our own write, or the watcher reports it back as the user saving
-    await watcher?.resync();
-    return record({
-      ok: true,
-      at: Date.now(),
-      template: bag.templateInfo(templateId)?.name ?? templateId,
-    });
-  } catch (err) {
-    return record({ ok: false, why: err instanceof Error ? err.message : String(err) });
-  }
+  const written = await rewrite(key, (bytes) =>
+    applyTemplate(bytes, blueprint, bag.valuesFor(key, templateId), templateId),
+  );
+  if (!written.ok) return record(written);
+  return record({
+    ok: true,
+    at: Date.now(),
+    template: bag.templateInfo(templateId)?.name ?? templateId,
+  });
 }
 
 /** one apply at a time: a save landing mid-apply otherwise reads the same file
@@ -207,42 +249,36 @@ async function applyAndReport(api: PluginApi, done: string, fresh = true): Promi
 
 /** cardmirror has just rebuilt the file, so put the template back */
 async function onSaved(api: PluginApi): Promise<void> {
-  if (!store(api).doc(docKey()).on) return;
+  if (!store(api).doc(docKey(api)).on) return;
   const outcome = await apply(api);
-  // a read that caught the file half-written is not worth shouting about
-  if (!outcome.ok && !/not a complete docx/.test(outcome.why)) say(outcome.why, 'problem');
+  // a read that caught the file half-written, or a save that landed mid write,
+  // is followed by a save the watcher picks up: not worth shouting about
+  if (outcome.ok || outcome.why === SAVED_MEANWHILE) return;
+  if (!/not a complete docx/.test(outcome.why)) say(outcome.why, 'problem');
 }
 
-/** take laymirror's marker off the file, so it stops adopting itself. */
+/** take laymirror's marker off the file, so it stops offering itself. */
 async function unmark(api: PluginApi): Promise<void> {
-  const located = locate(api);
-  if ('error' in located) {
-    say(located.error, 'problem');
+  const found = locate(api);
+  if ('error' in found) {
+    say(found.error, 'problem');
     return;
   }
 
-  const file = await readFile(located.path);
-  if (!file) {
-    say('could not read the document — reopen it and try again', 'problem');
-    return;
-  }
-
-  let parts: Parts;
-  try {
-    parts = unzip(file.bytes);
-  } catch {
-    say('the document is not readable as a docx right now', 'problem');
-    return;
-  }
-  // a partial read mid-save must abort, never round-trip into a write
-  if (!isDocx(parts)) {
-    say('the document looks incomplete — try again in a moment', 'problem');
-    return;
-  }
-
-  clearMarker(parts);
-  await writeFile(located.path, zip(parts));
-  await watcher?.resync();
+  const written = await rewrite(found.path, (bytes) => {
+    let parts;
+    try {
+      parts = unzip(bytes);
+    } catch {
+      throw new Error('the document is not readable as a docx right now');
+    }
+    // a partial read mid-save must abort, never round-trip into a write
+    if (!isDocx(parts)) throw new Error('the document looks incomplete — try again in a moment');
+    if (!readMarker(parts)) return bytes;
+    clearMarker(parts);
+    return zip(parts);
+  });
+  if (!written.ok) say(written.why, 'problem');
 }
 
 /** how many ticks a document gets to become reachable: the history is filled a
@@ -253,25 +289,18 @@ const ADOPT_TRIES = 4;
  *  tick can fire while the last one is still awaiting. */
 const adopted = new Map<string, number>();
 
-/** a document carrying laymirror's marker turns itself on. the marker travels
- *  inside the .docx, so a file a teammate marked arrives lay. */
+/** a document carrying laymirror's marker was formatted with a template,
+ *  maybe on a teammate's machine. it does not switch itself on: the marker is
+ *  just bytes in a file, and switching on starts rewriting that file. the
+ *  document is tied to the marker's own template, never to whichever was loaded
+ *  last, and the switch is left to the user. */
 async function adopt(api: PluginApi, key: string): Promise<void> {
   const tries = (adopted.get(key) ?? 0) + 1;
   adopted.set(key, tries);
 
-  const retry = (): void => {
-    if (tries < ADOPT_TRIES) adopted.delete(key);
-  };
-
-  const located = locate(api);
-  if ('error' in located) {
-    retry();
-    return;
-  }
-
-  const file = await readFile(located.path);
+  const file = await readFile(key);
   if (!file) {
-    retry();
+    if (tries < ADOPT_TRIES) adopted.delete(key);
     return;
   }
 
@@ -284,10 +313,30 @@ async function adopt(api: PluginApi, key: string): Promise<void> {
   if (!marker) return;
 
   const bag = store(api);
-  if (bag.doc(key).on) return;
-  bag.setDoc(key, { on: true, templateId: bag.template(marker) ? marker : bag.doc(key).templateId });
-  sync(api);
+  const doc = bag.doc(key);
+  if (doc.on || doc.templateId) return;
+  bag.setDoc(key, { templateId: marker });
+
+  const name = docName() ?? 'this document';
+  const template = marker.replace(/^template:/, '');
+  say(
+    bag.templateInfo(marker)
+      ? `${name} was formatted with ${template} — turn lay formatting on to keep it`
+      : `${name} was formatted with ${template}, which is not loaded here — load it first`,
+  );
+  if (panelOpen()) refresh();
 }
+
+/** the flag as this session found it. an installed laymirror loads only because
+ *  its flag is true, and from then on reads it the way cardmirror does: anything
+ *  but true is off, which is what an uninstall leaves. one loaded from a file
+ *  has no flag, and runs until the session ends or a flag says false. */
+const flagAtLoad = enabledFlag(ID);
+
+const switchedOff = (): boolean => {
+  const flag = enabledFlag(ID);
+  return flagAtLoad === true ? flag !== true : flag === false;
+};
 
 /** everything laymirror has running, stopped. api v1 has no unload hook, so
  *  `sync` noticing the enabled flag is the only thing that can call this. */
@@ -302,17 +351,17 @@ function stop(): void {
 
 function sync(api: PluginApi): void {
   // switched off in settings: a disabled plugin must not keep rewriting files
-  if (!isEnabled(ID)) {
+  if (switchedOff()) {
     stop();
     return;
   }
 
   const bag = store(api);
-  const key = docKey();
+  const key = docKey(api);
 
   if (key && (adopted.get(key) ?? 0) < ADOPT_TRIES) void adopt(api, key);
 
-  if (!bag.doc(key).on) {
+  if (!key || !bag.doc(key).on) {
     if (watching !== null) {
       watcher?.stop();
       watching = null;
@@ -320,13 +369,9 @@ function sync(api: PluginApi): void {
     return;
   }
 
-  const located = locate(api);
-  const path = 'path' in located ? located.path : null;
-  if (path === watching) return;
-
-  watching = path;
-  if (path) watcher?.start(path);
-  else watcher?.stop();
+  if (key === watching) return;
+  watching = key;
+  watcher?.start(key);
 }
 
 /** the api the background session runs on: a stand-in until a command hands
@@ -342,12 +387,13 @@ function ensureSession(api: PluginApi): void {
 
 async function toggleLay(api: PluginApi): Promise<void> {
   const bag = store(api);
-  const key = docKey();
-  if (!key) {
-    say('no document is open', 'problem');
+  const found = locate(api);
+  if ('error' in found) {
+    say(found.error, 'problem');
     return;
   }
 
+  const key = found.path;
   const on = !bag.doc(key).on;
   bag.setDoc(key, { on, templateId: templateIdFor(bag, key) });
   if (on) adopted.set(key, ADOPT_TRIES);
@@ -375,20 +421,24 @@ async function loadTemplate(api: PluginApi): Promise<void> {
   const picked = await openFile(WORD_FILES);
   if (!picked) return;
 
-  if (picked.bytes.length > TEMPLATE_LIMIT) {
-    say(`${picked.name} is too large to keep as a template`, 'problem');
-    return;
-  }
-
   const result = read(picked.bytes, picked.name);
   if (!result.ok) {
     say(result.error, 'problem');
     return;
   }
+  // measured after the cut: macros and sample cards are not kept, so a large
+  // file can still be a small template
+  if (result.kept.length > TEMPLATE_LIMIT) {
+    say(`${picked.name} is too large to keep as a template`, 'problem');
+    return;
+  }
 
   const bag = store(api);
   const id = `template:${picked.name}`;
-  bag.addTemplate({ id, name: picked.name, path: picked.handle, docx: picked.bytes });
+  if (!bag.addTemplate({ id, name: picked.name, path: picked.handle, docx: result.kept })) {
+    say(`${picked.name} does not fit beside the templates documents already use`, 'problem');
+    return;
+  }
 
   // the bag swallows a failed localStorage write, so a template over quota
   // looks loaded until the next launch. read it back rather than trust it
@@ -403,7 +453,7 @@ async function loadTemplate(api: PluginApi): Promise<void> {
   const stat = await statFile(picked.handle).catch(() => null);
   if (stat) takenAt.set(id, stat.mtimeMs);
 
-  const key = docKey();
+  const key = docKey(api);
   if (key) bag.setDoc(key, { templateId: id });
   sync(api);
 
@@ -421,8 +471,8 @@ async function loadTemplate(api: PluginApi): Promise<void> {
 /** cardmirror never said where this document is, so ask. the picker is also
  *  what grants read scope on the path; a path from anywhere else has none. */
 async function locateDoc(api: PluginApi): Promise<void> {
-  const key = docKey();
-  if (!key) {
+  const name = docName();
+  if (!name) {
     say('no document is open', 'problem');
     return;
   }
@@ -431,16 +481,17 @@ async function locateDoc(api: PluginApi): Promise<void> {
   if (!picked) return;
 
   // a different file with the template written onto it is worse than no file
-  if (picked.name !== key) {
-    say(`that is ${picked.name}, and the open document is ${key}`, 'problem');
+  if (picked.name !== name) {
+    say(`that is ${picked.name}, and the open document is ${name}`, 'problem');
     return;
   }
 
-  knownPath.set(key, picked.handle);
-  store(api).setDoc(key, { path: picked.handle });
+  // newer than the history's entry, so it wins until the next open
+  knownPath.set(name, picked.handle);
+  store(api).setLocated(name, { path: picked.handle, at: Date.now() });
   sync(api);
   if (panelOpen()) refresh();
-  say(`${key} found`);
+  say(`${name} found`);
 }
 
 function openLaymirror(api: PluginApi): void {
@@ -451,15 +502,15 @@ function openLaymirror(api: PluginApi): void {
   }
 
   const bag = () => store(api);
-  const template = () => blueprintFor(bag(), templateIdFor(bag(), docKey()));
+  const template = () => blueprintFor(bag(), templateIdFor(bag(), docKey(api)));
 
   openPanel({
-    on: () => bag().doc(docKey()).on,
-    templateName: () => bag().templateInfo(templateIdFor(bag(), docKey()))?.name ?? null,
-    templatePath: () => bag().templateInfo(templateIdFor(bag(), docKey()))?.path ?? null,
+    on: () => bag().doc(docKey(api)).on,
+    templateName: () => bag().templateInfo(templateIdFor(bag(), docKey(api)))?.name ?? null,
+    templatePath: () => bag().templateInfo(templateIdFor(bag(), docKey(api)))?.path ?? null,
     fields: () => template()?.fields ?? [],
     values: () => {
-      const key = docKey();
+      const key = docKey(api);
       return bag().valuesFor(key, templateIdFor(bag(), key));
     },
     problem: () => {
@@ -471,11 +522,11 @@ function openLaymirror(api: PluginApi): void {
     onLoadTemplate: () => loadTemplate(api),
     // saved as typed, so a plain ⌘S picks up what is on screen
     onChange: (values) => {
-      const key = docKey();
+      const key = docKey(api);
       if (key) bag().setValues(key, templateIdFor(bag(), key), values);
     },
     onApply: async (values) => {
-      const key = docKey();
+      const key = docKey(api);
       if (key) bag().setValues(key, templateIdFor(bag(), key), values);
       await applyAndReport(api, 'template applied');
     },

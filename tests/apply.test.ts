@@ -4,7 +4,7 @@ import { makeExport, makeTemplate } from './fixture.js';
 import { applyTemplate } from '../src/docx/apply.js';
 import { findFields, type Values } from '../src/docx/fields.js';
 import { readMarker } from '../src/docx/marker.js';
-import { readText, unzip, type Parts } from '../src/docx/zip.js';
+import { readText, unzip, writeText, zip, type Parts } from '../src/docx/zip.js';
 import { headerParts, read } from '../src/template/template.js';
 
 const blueprint = () => {
@@ -40,8 +40,23 @@ describe('applyTemplate', () => {
     expect(readMarker(applied())).toBe('template:lay.docx');
   });
 
-  it('repoints the attached template at a basename', () => {
-    expect(readText(applied(), 'word/_rels/settings.xml.rels')).toContain(
+  // cardmirror's attached template is what lights up verbatim's ribbon
+  it("keeps cardmirror's attached template", () => {
+    const rels = readText(applied(), 'word/_rels/settings.xml.rels')!;
+    expect(rels).toContain('Debate.dotm');
+    expect(rels).not.toContain('Lay%20Cut%20Cards.dotx');
+  });
+
+  it('attaches the template by basename where the export has none', () => {
+    const parts = unzip(makeExport());
+    delete parts['word/_rels/settings.xml.rels'];
+    writeText(
+      parts,
+      'word/settings.xml',
+      readText(parts, 'word/settings.xml')!.replace(/<w:attachedTemplate[^>]*\/>/, ''),
+    );
+    const bytes = applyTemplate(zip(parts), blueprint(), {}, 'template:lay.docx');
+    expect(readText(unzip(bytes), 'word/_rels/settings.xml.rels')).toContain(
       'Lay%20Cut%20Cards.dotx',
     );
   });

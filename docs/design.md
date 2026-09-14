@@ -15,7 +15,7 @@ commands with key chords.
 | What | Where |
 | --- | --- |
 | Open document's path | `pmd-recent-files` in localStorage, matched against the filename chip |
-| File read and write | `window.electronAPI` |
+| File read and write | `window.electronAPI`, writing through `saveExisting` |
 | Save detection | polling `statFile` |
 | Storage bag before any command runs | `localStorage['plugin:laymirror']` |
 | Whether laymirror is still switched on | `enabled` in `localStorage['pmd-plugins']` |
@@ -23,7 +23,7 @@ commands with key chords.
 `readFileAtPath` takes `.cmir` and `.docx`. Templates load through `openFile`,
 the os picker.
 
-Read against cardmirror 1.3.0, in `src/host/cardmirror.ts`,
+Read against cardmirror 1.8.0 and 1.10.0, in `src/host/cardmirror.ts`,
 `src/host/electron.ts` and `src/template/styles.ts`.
 
 Api v1 has no unload hook, and a bundle cardmirror has already run cannot be
@@ -46,7 +46,8 @@ cardmirror saves ──► watcher sees the mtime move ──► read the file
 
 ## Template
 
-Template file: base64 in the storage bag. Parts are copied byte for byte:
+Template file: base64 in the storage bag, cut to the parts below plus what reads them. Parts are
+copied byte for byte:
 
 | Part | Sets |
 | --- | --- |

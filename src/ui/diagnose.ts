@@ -80,7 +80,7 @@ function collect(api: PluginApi): Line[] {
   const electron = (window as unknown as { electronAPI?: Record<string, unknown> }).electronAPI;
   add('electronAPI', electron ? 'present' : 'MISSING — not the desktop app?');
   if (electron) {
-    for (const method of ['readFileAtPath', 'writeFileAtPath', 'statFile', 'openFile']) {
+    for (const method of ['readFileAtPath', 'saveExisting', 'statFile', 'openFile']) {
       add(`  .${method}`, typeof electron[method] === 'function' ? 'ok' : 'MISSING');
     }
   }
@@ -107,15 +107,17 @@ function collect(api: PluginApi): Line[] {
     add('pmd-recent-files', recents);
   }
 
+  const bag = store(api);
+  const name = currentFilename();
   add('api.docInfo()', api.docInfo());
-  add('resolveDocPath()', resolveDocPath(api.docInfo()));
-  // what stands in when the history has no entry to give
-  add('path the user pointed at', store(api).doc(currentFilename()).path);
+  // competes with the history on recency
+  add('path the user pointed at', name ? bag.located(name) : null);
+  add('resolveDocPath()', resolveDocPath(api.docInfo(), (filename) => bag.located(filename)));
 
   // read before any command has run, so it decides whether a plain save is
   // picked up at all
-  const bag = localStorage.getItem(storageKey('laymirror'));
-  add('plugin:laymirror', bag === null ? 'empty — nothing turned on yet' : `${bag.length} bytes`);
+  const held = localStorage.getItem(storageKey('laymirror'));
+  add('plugin:laymirror', held === null ? 'empty — nothing turned on yet' : `${held.length} bytes`);
 
   return lines;
 }

@@ -1,6 +1,6 @@
 // the lay marker: a custom document property beside cardmirror's `cmirDocId`.
-// it travels with the file and survives a word round-trip, which is what makes
-// activation per-file rather than per-machine.
+// it travels with the file and survives a word round-trip, so a file opened on
+// another machine can name the template it was formatted with.
 //
 // custom.xml is merged, never replaced: cardmirror keeps its doc id there, and
 // sharepoint-derived templates a ContentTypeId.

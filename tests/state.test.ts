@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { beforeEach, describe, expect, it } from 'vitest';
-import { decode, encode, store } from '../src/state.js';
+import { decode, encode, store, TEMPLATE_LIMIT } from '../src/state.js';
 import type { PluginApi } from '../src/host/plugin-api.js';
 
 /** cardmirror's storage is a json bag per plugin. */
@@ -61,7 +61,6 @@ describe('documents', () => {
       templateId: null,
       values: {},
       on: false,
-      path: null,
     });
   });
 
@@ -121,5 +120,40 @@ describe('header values', () => {
     const bag = store(api);
     bag.setValues('1ac.docx', 'a', { code: 'BCP 26-27' });
     expect(bag.valuesFor('theirs.docx', 'b')).toEqual({});
+  });
+});
+
+// the bag shares an origin with cardmirror's own settings and history, so the
+// cap is on every template together
+describe('template room', () => {
+  const sized = (id: string, bytes: number) => ({
+    id,
+    name: id,
+    path: null,
+    docx: new Uint8Array(bytes),
+  });
+
+  it('refuses a template that will not fit beside the ones in use', () => {
+    const bag = store(api);
+    expect(bag.addTemplate(sized('a', TEMPLATE_LIMIT * 0.75))).toBe(true);
+    bag.setDoc('/x/1ac.docx', { templateId: 'a' });
+
+    expect(bag.addTemplate(sized('b', TEMPLATE_LIMIT * 0.5))).toBe(false);
+    expect(bag.templateInfo('a')).not.toBeNull();
+    expect(bag.templateInfo('b')).toBeNull();
+  });
+
+  it('drops a template no document uses', () => {
+    const bag = store(api);
+    bag.addTemplate(sized('a', TEMPLATE_LIMIT * 0.75));
+    expect(bag.addTemplate(sized('b', TEMPLATE_LIMIT * 0.5))).toBe(true);
+    expect(bag.templateInfo('a')).toBeNull();
+  });
+
+  it('replaces a template rather than counting it twice', () => {
+    const bag = store(api);
+    bag.addTemplate(sized('a', TEMPLATE_LIMIT * 0.75));
+    bag.setDoc('/x/1ac.docx', { templateId: 'a' });
+    expect(bag.addTemplate(sized('a', TEMPLATE_LIMIT * 0.75))).toBe(true);
   });
 });
