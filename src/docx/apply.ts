@@ -104,16 +104,38 @@ function applyStyles(documentXml: string, blueprint: Blueprint): string {
   return serializeXml(doc);
 }
 
+const TEMPLATE_REL = /<Relationship\b[^>]*attachedTemplate"[^>]*\/>/;
+
 /** word matches an attached template by basename out of the user's templates
  *  folder, so a basename is both the safe target and the working one.
  *
- *  only where cardmirror's export has none: the one it writes is what lights up
- *  verbatim's ribbon, and replacing it loses that for teammates on verbatim. */
+ *  cardmirror's export attaches Debate.dotm, and it cannot stay: verbatim's
+ *  Document_Open runs UpdateStyles on any document attached to it, with its
+ *  AutoUpdateStyles setting on by default, and that copies verbatim's styles
+ *  over the template's every time the file is opened. the ribbon goes with it. */
 function pointAttachedTemplate(parts: Parts, template: string | null): void {
-  if (!template) return;
-
   const rels = readText(parts, SETTINGS_RELS);
-  if (rels?.includes(TEMPLATE_REL_TYPE)) return;
+
+  if (!template) {
+    if (rels) writeText(parts, SETTINGS_RELS, rels.replace(TEMPLATE_REL, ''));
+    const settings = readText(parts, SETTINGS);
+    if (settings) {
+      writeText(parts, SETTINGS, settings.replace(/<w:attachedTemplate\b[^>]*\/>/, ''));
+    }
+    return;
+  }
+
+  if (rels?.includes(TEMPLATE_REL_TYPE)) {
+    writeText(
+      parts,
+      SETTINGS_RELS,
+      rels.replace(
+        /(<Relationship\b[^>]*attachedTemplate"[^>]*\bTarget=")[^"]*(")/,
+        `$1${template}$2`,
+      ),
+    );
+    return;
+  }
 
   const settings = readText(parts, SETTINGS);
   if (!settings) return;

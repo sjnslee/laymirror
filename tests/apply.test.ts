@@ -40,25 +40,23 @@ describe('applyTemplate', () => {
     expect(readMarker(applied())).toBe('template:lay.docx');
   });
 
-  // cardmirror's attached template is what lights up verbatim's ribbon
-  it("keeps cardmirror's attached template", () => {
+  // verbatim's Document_Open runs UpdateStyles on any document attached to
+  // Debate.dotm, which copies its styles over the template's on every open
+  it("takes verbatim's template off the document", () => {
     const rels = readText(applied(), 'word/_rels/settings.xml.rels')!;
-    expect(rels).toContain('Debate.dotm');
-    expect(rels).not.toContain('Lay%20Cut%20Cards.dotx');
+    expect(rels).not.toContain('Debate.dotm');
+    expect(rels).toContain('Lay%20Cut%20Cards.dotx');
   });
 
-  it('attaches the template by basename where the export has none', () => {
-    const parts = unzip(makeExport());
-    delete parts['word/_rels/settings.xml.rels'];
-    writeText(
-      parts,
-      'word/settings.xml',
-      readText(parts, 'word/settings.xml')!.replace(/<w:attachedTemplate[^>]*\/>/, ''),
-    );
-    const bytes = applyTemplate(zip(parts), blueprint(), {}, 'template:lay.docx');
-    expect(readText(unzip(bytes), 'word/_rels/settings.xml.rels')).toContain(
-      'Lay%20Cut%20Cards.dotx',
-    );
+  it('detaches verbatim even when the template attaches nothing', () => {
+    const template = unzip(makeTemplate());
+    delete template['word/_rels/settings.xml.rels'];
+    const result = read(zip(template), 'lay.docx');
+    if (!result.ok) throw new Error(result.error);
+
+    const parts = unzip(applyTemplate(makeExport(), result.blueprint, {}, 'template:lay.docx'));
+    expect(readText(parts, 'word/_rels/settings.xml.rels') ?? '').not.toContain('attachedTemplate');
+    expect(readText(parts, 'word/settings.xml')).not.toContain('w:attachedTemplate');
   });
 
   // an apply lands on a file laymirror has already applied to, so it has to
