@@ -191,6 +191,4 @@ export function openDiagnostics(api: PluginApi): void {
   dialog.append(title, pre, actions);
   root.append(dialog);
   document.body.append(root);
-
-  console.log('[laymirror] diagnostics\n' + text);
 }
