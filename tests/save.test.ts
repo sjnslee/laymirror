@@ -160,3 +160,30 @@ it('leaves a document that was never turned on alone', async () => {
   await settle();
   expect(disk).toBe(before);
 });
+
+// api v1 has no unload hook and a bundle that has run cannot be unloaded, so
+// laymirror has to notice on its own. a disabled plugin still rewriting files is
+// worse than one that stops a tick late
+it('stops writing once cardmirror switches it off', async () => {
+  await settle();
+  cardmirrorSaves();
+  await settle();
+  expect(readText(unzip(disk), 'word/header1.xml')).toContain('PAGE');
+
+  localStorage.setItem('pmd-plugins', JSON.stringify({ enabled: { laymirror: false } }));
+  await settle();
+
+  cardmirrorSaves();
+  const before = disk;
+  await settle();
+  expect(disk).toBe(before);
+  expect(readText(unzip(disk), 'word/header1.xml')).toBeNull();
+});
+
+it('keeps working when no enabled flag has been written yet', async () => {
+  localStorage.removeItem('pmd-plugins');
+  await settle();
+  cardmirrorSaves();
+  await settle();
+  expect(readText(unzip(disk), 'word/header1.xml')).toContain('PAGE');
+});

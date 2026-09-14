@@ -18,12 +18,17 @@ commands with key chords.
 | File read and write | `window.electronAPI` |
 | Save detection | polling `statFile` |
 | Storage bag before any command runs | `localStorage['plugin:laymirror']` |
+| Whether laymirror is still switched on | `enabled` in `localStorage['pmd-plugins']` |
 
 `readFileAtPath` takes `.cmir` and `.docx`. Templates load through `openFile`,
 the os picker.
 
 Read against cardmirror 1.3.0, in `src/host/cardmirror.ts`,
 `src/host/electron.ts` and `src/template/styles.ts`.
+
+Api v1 has no unload hook, and a bundle cardmirror has already run cannot be
+unloaded, so the enabled flag is what lets laymirror stop its own timers when
+the user switches it off.
 
 ## Pipeline
 

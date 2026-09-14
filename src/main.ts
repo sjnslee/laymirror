@@ -5,7 +5,7 @@
 import { applyTemplate } from './docx/apply.js';
 import { clearMarker, readMarker } from './docx/marker.js';
 import { isDocx, unzip, zip, type Parts } from './docx/zip.js';
-import { currentFilename } from './host/cardmirror.js';
+import { currentFilename, isEnabled } from './host/cardmirror.js';
 import {
   DOCX_FILES,
   hasFileApi,
@@ -289,7 +289,24 @@ async function adopt(api: PluginApi, key: string): Promise<void> {
   sync(api);
 }
 
+/** everything laymirror has running, stopped. api v1 has no unload hook, so
+ *  `sync` noticing the enabled flag is the only thing that can call this. */
+function stop(): void {
+  if (syncing !== null) clearInterval(syncing);
+  syncing = null;
+  watcher?.stop();
+  watcher = null;
+  watching = null;
+  closePanel();
+}
+
 function sync(api: PluginApi): void {
+  // switched off in settings: a disabled plugin must not keep rewriting files
+  if (!isEnabled(ID)) {
+    stop();
+    return;
+  }
+
   const bag = store(api);
   const key = docKey();
 
