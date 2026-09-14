@@ -31,8 +31,9 @@ export interface PanelHost {
   outcome(): Outcome | null;
   onToggle(): void | Promise<void>;
   onLoadTemplate(): void | Promise<void>;
-  /** every keystroke in a header field, so a plain ⌘S picks up what is on
-   *  screen without the user pressing apply first. */
+  /** what is in the header fields, so a plain ⌘S picks up what is on screen
+   *  without the user pressing apply first. debounced, and flushed on blur,
+   *  before apply, and on close. */
   onChange(values: Values): void;
   onApply(values: Values): void | Promise<void>;
   actions: Action[];
@@ -150,15 +151,39 @@ const CSS = `
   padding-top: 12px;
   border-top: 1px solid var(--pmd-c-divider, #e0e0e0);
 }
-@keyframes lm-flash {
+@keyframes laymirror-flash {
   from { background: var(--pmd-c-accent-soft, rgba(37, 99, 235, .12)) }
   to { background: transparent }
 }
-#${PANEL_ID} .lm-flash { animation: lm-flash .7s ease-out }
+#${PANEL_ID} .lm-flash { animation: laymirror-flash .7s ease-out }
 `;
 
 let host: PanelHost | null = null;
 let onKey: ((event: KeyboardEvent) => void) | null = null;
+
+/** a keystroke costs a whole storage bag: cardmirror keeps a plugin's bag as one
+ *  localStorage entry, so every write re-serialises base64 template bytes with
+ *  it, synchronously. long enough to coalesce a typed word, short enough that a
+ *  ⌘S right after typing still finds what is on screen. */
+const SETTLE_MS = 300;
+let settling: ReturnType<typeof setTimeout> | null = null;
+let unsent: (() => void) | null = null;
+
+/** hold the newest values, and write them once typing pauses. */
+function hold(send: () => void): void {
+  unsent = send;
+  if (settling !== null) clearTimeout(settling);
+  settling = setTimeout(flush, SETTLE_MS);
+}
+
+/** write what is held right now. safe to call with nothing held. */
+export function flush(): void {
+  if (settling !== null) clearTimeout(settling);
+  settling = null;
+  const send = unsent;
+  unsent = null;
+  send?.();
+}
 /** the outcome the panel last drew, so a new one is flashed rather than
  *  swapped in under the button that caused it. */
 let shown: Outcome | null = null;
@@ -166,6 +191,7 @@ let shown: Outcome | null = null;
 export const isOpen = (): boolean => document.getElementById(PANEL_ID) !== null;
 
 export function closePanel(): void {
+  flush();
   if (onKey) {
     document.removeEventListener("keydown", onKey, true);
     onKey = null;
@@ -319,7 +345,10 @@ export function refresh(): void {
       input.placeholder = field.label;
       // held as typed, so a plain ⌘S writes what is on screen. no refresh
       // here: rebuilding the panel mid-word would take the caret with it
-      input.addEventListener("input", () => it.onChange(typed(inputs)));
+      input.addEventListener("input", () => hold(() => it.onChange(typed(inputs))));
+      // leaving a field is a pause by definition, and cheaper to write on than
+      // to wait out
+      input.addEventListener("blur", flush);
       inputs.set(field.key, input);
       label.append(caption, input);
       section.append(label);
@@ -331,7 +360,14 @@ export function refresh(): void {
   done.append(
     row(
       "file status",
-      button("apply now", () => it.onApply(typed(inputs)), true),
+      button(
+        "apply now",
+        () => {
+          flush();
+          return it.onApply(typed(inputs));
+        },
+        true,
+      ),
     ),
   );
   const outcome = it.outcome();

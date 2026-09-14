@@ -423,3 +423,45 @@ describe('between documents and sessions', () => {
     expect(panel()!.textContent).toContain('lay formatting is off');
   });
 });
+
+describe('holding what is typed', () => {
+  const held = (): Record<string, string> => {
+    const bag = JSON.parse(localStorage.getItem('plugin:laymirror') || '{}');
+    return bag.docs?.['1ac.docx']?.values ?? {};
+  };
+
+  const typeInto = async (text: string): Promise<HTMLInputElement> => {
+    await host.run('laymirror.panel');
+    await click('turn on');
+    await click('load…');
+    const input = panel()!.querySelector('input') as HTMLInputElement;
+    input.value = text;
+    input.dispatchEvent(new Event('input'));
+    return input;
+  };
+
+  // one keystroke used to rewrite the whole bag, base64 template bytes and all,
+  // synchronously on cardmirror's own thread
+  it('does not write a bag on every keystroke', async () => {
+    await typeInto('W');
+    expect(held()).toEqual({});
+  });
+
+  it('writes once typing settles', async () => {
+    await typeInto('WDL 27-28');
+    await vi.waitFor(() => expect(Object.values(held())).toContain('WDL 27-28'));
+  });
+
+  it('writes immediately when a field is left', async () => {
+    const input = await typeInto('WDL 27-28');
+    input.dispatchEvent(new Event('blur'));
+    expect(Object.values(held())).toContain('WDL 27-28');
+  });
+
+  // a panel closed mid word must not lose it
+  it('writes what is held when the panel closes', async () => {
+    await typeInto('WDL 27-28');
+    await host.run('laymirror.panel');
+    expect(Object.values(held())).toContain('WDL 27-28');
+  });
+});
