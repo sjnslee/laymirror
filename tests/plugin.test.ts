@@ -268,6 +268,27 @@ describe('applying the header', () => {
     expect(readText(unzip(host.disk()), 'word/header1.xml')).toContain('WDL 27-28');
   });
 
+  // an empty box means "the template's own text", so clearing a field has to
+  // bring that back rather than whatever was typed before
+  it('puts the template text back when a field is cleared', async () => {
+    await host.run('laymirror.panel');
+    await click('turn on');
+    await click('load…');
+    const field = () => panel()!.querySelector('input') as HTMLInputElement;
+    field().value = 'WDL 27-28';
+    field().dispatchEvent(new Event('input'));
+    await click('apply now');
+    expect(readText(unzip(host.disk()), 'word/header1.xml')).toContain('WDL 27-28');
+
+    field().value = '';
+    field().dispatchEvent(new Event('input'));
+    await click('apply now');
+    const xml = readText(unzip(host.disk()), 'word/header1.xml')!;
+    expect(xml).not.toContain('WDL 27-28');
+    expect(xml).toContain('Team ');
+    expect(field().value).toBe('');
+  });
+
   it('remembers it for the next time the panel opens', async () => {
     await host.run('laymirror.panel');
     await click('turn on');

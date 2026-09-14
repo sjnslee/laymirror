@@ -147,11 +147,11 @@ export function store(api: PluginApi): Store {
 
     setValues(key, templateId, values) {
       this.setDoc(key, { values });
-      // the next document off this template starts where this one ended,
-      // merged rather than replaced so setting one field keeps the others
+      // the next document off this template starts where this one ended.
+      // replaced, not merged: `values` is every field on screen, and a cleared
+      // field is absent from it, so a merge would bring its old text back
       if (!templateId) return;
-      const shared = asValues(defaults()[templateId]);
-      api.storage.set(DEFAULTS, { ...defaults(), [templateId]: { ...shared, ...values } });
+      api.storage.set(DEFAULTS, { ...defaults(), [templateId]: values });
     },
   };
 }

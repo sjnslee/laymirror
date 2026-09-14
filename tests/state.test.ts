@@ -99,11 +99,22 @@ describe('header values', () => {
     expect(bag.valuesFor('2ac.docx', 'a')).toEqual({ code: 'BCP 26-27', title: 'Aff' });
   });
 
+  // the panel's boxes start filled with what was inherited, so a save carries
+  // every field that has something in it
   it("lets a document override what it inherited", () => {
     const bag = store(api);
     bag.setValues('1ac.docx', 'a', { code: 'BCP 26-27', title: 'Aff' });
-    bag.setValues('2ac.docx', 'a', { title: 'Neg' });
+    bag.setValues('2ac.docx', 'a', { code: 'BCP 26-27', title: 'Neg' });
     expect(bag.valuesFor('2ac.docx', 'a')).toEqual({ code: 'BCP 26-27', title: 'Neg' });
+  });
+
+  // an emptied box is left out, and means the template's own text
+  it('forgets a field that was cleared', () => {
+    const bag = store(api);
+    bag.setValues('1ac.docx', 'a', { code: 'BCP 26-27', title: 'Aff' });
+    bag.setValues('1ac.docx', 'a', { code: 'BCP 26-27' });
+    expect(bag.valuesFor('1ac.docx', 'a')).toEqual({ code: 'BCP 26-27' });
+    expect(bag.valuesFor('2ac.docx', 'a')).toEqual({ code: 'BCP 26-27' });
   });
 
   it('does not leak across templates', () => {
