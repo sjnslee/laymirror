@@ -6,6 +6,7 @@
 
 import { fillFields, type Values } from './fields.js';
 import { writeMarker } from './marker.js';
+import { mergeNumbering, remapNumIds } from './numbering.js';
 import { EMPTY_RELS, restoreSnapshot } from './snapshot.js';
 import { headerParts, type Blueprint } from '../template/template.js';
 import { EXPORT_STYLE_BY_TYPE } from '../template/styles.js';
@@ -13,6 +14,7 @@ import { elements, parseXml, serializeXml } from './xml.js';
 import { isDocx, readText, unzip, writeText, zip, type Parts } from './zip.js';
 
 const DOCUMENT = 'word/document.xml';
+const NUMBERING = 'word/numbering.xml';
 const SETTINGS = 'word/settings.xml';
 const SETTINGS_RELS = 'word/_rels/settings.xml.rels';
 
@@ -171,9 +173,18 @@ export function applyTemplate(
 
   const documentXml = readText(parts, DOCUMENT);
   if (!documentXml) throw new Error('document.xml is unreadable');
-  writeText(parts, DOCUMENT, applyStyles(documentXml, blueprint));
 
-  restoreSnapshot(parts, blueprint.snapshot, fillFields(headerParts(blueprint.snapshot), values));
+  // cardmirror's card numbering has to be merged before the template's own
+  // numbering.xml lands on top of it
+  const numbering = mergeNumbering(
+    readText(parts, NUMBERING),
+    readText(blueprint.snapshot.parts, NUMBERING),
+  );
+  writeText(parts, DOCUMENT, remapNumIds(applyStyles(documentXml, blueprint), numbering.remap));
+
+  const overrides = fillFields(headerParts(blueprint.snapshot), values);
+  if (numbering.xml !== null) overrides[NUMBERING] = numbering.xml;
+  restoreSnapshot(parts, blueprint.snapshot, overrides);
   pointAttachedTemplate(parts, blueprint.snapshot.attachedTemplate);
   writeMarker(parts, templateId);
 

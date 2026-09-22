@@ -29,11 +29,28 @@ describe('applyTemplate', () => {
     expect(documentOf(applied())).toContain('w:bottom="1008"');
   });
 
-  it('carries the template styles, theme and numbering verbatim', () => {
+  it('carries the template styles and theme verbatim', () => {
     const parts = applied();
     expect(readText(parts, 'word/styles.xml')).toContain('Palatino Linotype');
     expect(readText(parts, 'word/theme/theme1.xml')).toContain('Calibri');
-    expect(readText(parts, 'word/numbering.xml')).toContain('w:numId="7"');
+  });
+
+  // cardmirror numbers cards through native word numbering, so replacing
+  // numbering.xml wholesale left its numIds resolving to the template's lists
+  it("keeps cardmirror's card numbering alongside the template's lists", () => {
+    const numbering = readText(applied(), 'word/numbering.xml')!;
+    expect(numbering).toContain('w:numId="7"');
+    expect(numbering).toContain('w:val="bullet"');
+    expect(numbering).toContain('w:val="decimal"');
+    expect(numbering).toContain('<w:num w:numId="8">');
+    expect(numbering).toContain('<w:num w:numId="9">');
+  });
+
+  it('points the numbered tags at the ids the merge minted', () => {
+    const doc = documentOf(applied());
+    expect(doc).toContain('<w:numId w:val="8"/>');
+    expect(doc).toContain('<w:numId w:val="9"/>');
+    expect(doc).not.toContain('<w:numId w:val="1"/>');
   });
 
   it('marks the document so activation survives the file', () => {

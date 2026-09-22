@@ -143,6 +143,14 @@ const HEADER_RELS =
 
 const CREST = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
 
+/** the school's own lists, which cardmirror's numIds would otherwise land on. */
+const TEMPLATE_NUMBERING =
+  `<w:numbering xmlns:w="${WML}">` +
+  '<w:abstractNum w:abstractNumId="3"><w:lvl w:ilvl="0"><w:numFmt w:val="bullet"/>' +
+  '<w:lvlText w:val="&#61623;"/></w:lvl></w:abstractNum>' +
+  '<w:num w:numId="7"><w:abstractNumId w:val="3"/></w:num>' +
+  '</w:numbering>';
+
 const TEMPLATE_DOC_RELS =
   '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
   `<Relationships xmlns="${PKG_REL_NS}">` +
@@ -161,7 +169,7 @@ export function makeTemplate(): Uint8Array {
   writeText(parts, 'word/header1.xml', DONOR_HEADER);
   writeText(parts, 'word/footer1.xml', DONOR_FOOTER);
   writeText(parts, 'word/_rels/header1.xml.rels', HEADER_RELS);
-  writeText(parts, 'word/numbering.xml', '<w:numbering><w:num w:numId="7"/></w:numbering>');
+  writeText(parts, 'word/numbering.xml', TEMPLATE_NUMBERING);
   writeText(parts, 'word/fontTable.xml', '<w:fonts><w:font w:name="Palatino Linotype"/></w:fonts>');
   parts['word/media/crest.png'] = CREST;
   writeText(
@@ -186,8 +194,11 @@ const run = (styleId: string | null, text: string) =>
 const EXPORT_DOC =
   '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
   `<w:document xmlns:w="${WML}"><w:body>` +
-  // a tag leaves as Heading4, not as anything named "tag"
-  `<w:p><w:pPr><w:pStyle w:val="Heading4"/></w:pPr>${run(null, 'the tag')}</w:p>` +
+  // a tag leaves as Heading4, not as anything named "tag", and a numbered card
+  // carries its list membership on that same paragraph
+  '<w:p><w:pPr><w:pStyle w:val="Heading4"/>' +
+  '<w:numPr><w:ilvl w:val="0"/><w:numId w:val="1"/></w:numPr>' +
+  `</w:pPr>${run(null, 'the tag')}</w:p>` +
   // a cite paragraph: bare, recognisable only by its cite marks
   `<w:p>${run('Style13ptBold', 'Author 24')}${run(null, ', a journal')}</w:p>` +
   // a card body: bare, with underlined evidence
@@ -198,6 +209,10 @@ const EXPORT_DOC =
   `<w:p>${run(null, '[page break]')}</w:p>` +
   // a heading closes the card
   `<w:p><w:pPr><w:pStyle w:val="Heading2"/></w:pPr>${run(null, 'a hat')}</w:p>` +
+  // a hat restarts the count, so the next numbered card is on a second numId
+  '<w:p><w:pPr><w:pStyle w:val="Heading4"/>' +
+  '<w:numPr><w:ilvl w:val="1"/><w:numId w:val="2"/></w:numPr>' +
+  `</w:pPr>${run(null, 'a lettered tag')}</w:p>` +
   // ordinary prose after it must stay ordinary
   `<w:p>${run(null, 'just a paragraph')}</w:p>` +
   '<w:sectPr><w:pgSz w:w="12240" w:h="15840"/>' +
@@ -228,6 +243,23 @@ const EXPORT_SETTINGS_RELS =
   `<Relationship Id="rId1" Type="${REL_NS}/attachedTemplate"` +
   ' Target="file:///Debate.dotm" TargetMode="External"/></Relationships>';
 
+/** cardmirror's card numbering: one abstractNum at 0, and a numId per restart
+ *  run allocated from 1, each restating its start. */
+const EXPORT_NUMBERING =
+  `<w:numbering xmlns:w="${WML}">` +
+  '<w:abstractNum w:abstractNumId="0">' +
+  '<w:lvl w:ilvl="0"><w:numFmt w:val="decimal"/><w:lvlText w:val="%1."/></w:lvl>' +
+  '<w:lvl w:ilvl="1"><w:numFmt w:val="lowerLetter"/><w:lvlText w:val="%2."/></w:lvl>' +
+  '</w:abstractNum>' +
+  [1, 2]
+    .map(
+      (id) =>
+        `<w:num w:numId="${id}"><w:abstractNumId w:val="0"/>` +
+        '<w:lvlOverride w:ilvl="0"><w:startOverride w:val="1"/></w:lvlOverride></w:num>',
+    )
+    .join('') +
+  '</w:numbering>';
+
 /** a cardmirror export as raw docx bytes. */
 export function makeExport(): Uint8Array {
   const parts = makeDocx();
@@ -238,6 +270,6 @@ export function makeExport(): Uint8Array {
   // the two relationships cardmirror's exporter always writes, and no more:
   // it never relates a theme or a font table
   writeText(parts, 'word/_rels/document.xml.rels', EXPORT_RELS);
-  writeText(parts, 'word/numbering.xml', '<w:numbering/>');
+  writeText(parts, 'word/numbering.xml', EXPORT_NUMBERING);
   return zip(parts);
 }
