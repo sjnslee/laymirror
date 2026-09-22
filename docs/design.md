@@ -38,7 +38,8 @@ cardmirror saves ──► watcher sees the mtime move ──► read the file
        template ──► blueprint ──► apply ◄───────────────┘
                                     │
                                     ├─ remap cardmirror's style ids onto the template's
-                                    ├─ restore styles, theme, fonts, numbering, header, footer
+                                    ├─ restore styles, theme, fonts, header, footer
+                                    ├─ merge cardmirror's card numbering into the template's lists
                                     ├─ restore the section: page size, margins, header refs
                                     ├─ fill the header fields
                                     └─ write the file back ──► resync the watcher
@@ -53,9 +54,14 @@ copied byte for byte:
 | --- | --- |
 | `styles.xml` | styles |
 | `theme1.xml`, `fontTable.xml` | fonts |
-| `numbering.xml` | lists |
+| `numbering.xml` | lists, merged with cardmirror's card numbering |
 | `header*.xml`, `footer*.xml` | header and footer, plus rels and image parts |
 | body `sectPr` | page size, margins, header refs |
+
+`numbering.xml` is the one part not written back whole. cardmirror numbers cards through native
+word numbering — a `w:numPr` in `document.xml` pointing at a `w:num` it defines — so the template's
+definitions are kept and cardmirror's appended with their ids shifted past them, and the
+references in `document.xml` follow.
 
 Header fields are read from the template, never from the saved file.
 
