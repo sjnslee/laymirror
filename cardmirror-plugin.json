@@ -1,9 +1,9 @@
 {
   "id": "laymirror",
-  "name": "laymirror",
-  "version": "0.3.0",
+  "name": "Laymirror",
+  "version": "0.3.1",
   "apiVersion": 1,
-  "description": "lay debate documents — the template and its header, put back on every save",
+  "description": "Formats saved documents from an uploaded docx template: pagination, styles, fonts, page setup, headers, and footers",
   "author": "sjnslee",
   "license": "PolyForm-Noncommercial-1.0.0",
   "minAppVersion": "1.8.0"
