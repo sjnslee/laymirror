@@ -178,3 +178,26 @@ describe('restoreSnapshot — relationships word needs', () => {
     expect([...rels.matchAll(/relationships\/styles/g)]).toHaveLength(1);
   });
 });
+
+// the body section is the one the template owns: `readSectPr` takes the last,
+// so the restore has to put it back in the same place
+describe('restoreSnapshot — a document with a section break in it', () => {
+  it('replaces the body section, not the first break', () => {
+    const parts = exported();
+    writeText(
+      parts,
+      'word/document.xml',
+      readText(parts, 'word/document.xml')!.replace(
+        '<w:body>',
+        '<w:body><w:p><w:pPr><w:sectPr><w:pgSz w:w="15840" w:h="12240"/></w:sectPr></w:pPr></w:p>',
+      ),
+    );
+    restoreSnapshot(parts, snapshot());
+    const sections = [
+      ...readText(parts, 'word/document.xml')!.matchAll(/<w:sectPr\b[\s\S]*?<\/w:sectPr>/g),
+    ].map((match) => match[0]);
+    expect(sections).toHaveLength(2);
+    expect(sections[0]).toContain('w:w="15840"');
+    expect(sections[1]).toContain('headerReference');
+  });
+});

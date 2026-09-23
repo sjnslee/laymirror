@@ -9,13 +9,14 @@ import { writeMarker } from './marker.js';
 import { mergeNumbering, remapNumIds } from './numbering.js';
 import { EMPTY_RELS, restoreSnapshot } from './snapshot.js';
 import { headerParts, type Blueprint } from '../template/template.js';
-import { EXPORT_STYLE_BY_TYPE } from '../template/styles.js';
+import { EXPORT_STYLE_BY_TYPE, mergeStyles } from '../template/styles.js';
 import { elements, parseXml, serializeXml } from './xml.js';
 import { isDocx, readText, unzip, writeText, zip, type Parts } from './zip.js';
 
 const DOCUMENT = 'word/document.xml';
 const NUMBERING = 'word/numbering.xml';
 const SETTINGS = 'word/settings.xml';
+const STYLES = 'word/styles.xml';
 const SETTINGS_RELS = 'word/_rels/settings.xml.rels';
 
 const TEMPLATE_REL_TYPE =
@@ -169,10 +170,10 @@ export function applyTemplate(
   templateId: string,
 ): Uint8Array {
   const parts = unzip(bytes);
-  if (!isDocx(parts)) throw new Error('not a complete docx — read again in a moment');
+  if (!isDocx(parts)) throw new Error('Not a complete docx — read again in a moment');
 
   const documentXml = readText(parts, DOCUMENT);
-  if (!documentXml) throw new Error('document.xml is unreadable');
+  if (!documentXml) throw new Error('Document.xml is unreadable');
 
   // cardmirror's card numbering has to be merged before the template's own
   // numbering.xml lands on top of it
@@ -180,10 +181,18 @@ export function applyTemplate(
     readText(parts, NUMBERING),
     readText(blueprint.snapshot.parts, NUMBERING),
   );
-  writeText(parts, DOCUMENT, remapNumIds(applyStyles(documentXml, blueprint), numbering.remap));
+  const styled = remapNumIds(applyStyles(documentXml, blueprint), numbering.remap);
+  writeText(parts, DOCUMENT, styled);
 
   const overrides = fillFields(headerParts(blueprint.snapshot), values);
   if (numbering.xml !== null) overrides[NUMBERING] = numbering.xml;
+  // read before the template's styles.xml lands on cardmirror's
+  const styles = mergeStyles(
+    readText(parts, STYLES),
+    readText(blueprint.snapshot.parts, STYLES),
+    styled,
+  );
+  if (styles !== null) overrides[STYLES] = styles;
   restoreSnapshot(parts, blueprint.snapshot, overrides);
   pointAttachedTemplate(parts, blueprint.snapshot.attachedTemplate);
   writeMarker(parts, templateId);

@@ -53,6 +53,35 @@ describe('applyTemplate', () => {
     expect(doc).not.toContain('<w:numId w:val="1"/>');
   });
 
+  // cardmirror's styles.xml defines Analytic and Undertag; the template's
+  // lands on top of it, so a template without them left the text unstyled
+  it("keeps cardmirror's definition for a style the template does not have", () => {
+    const parts = unzip(makeExport());
+    writeText(
+      parts,
+      'word/document.xml',
+      documentOf(parts).replace(
+        '</w:body>',
+        '<w:p><w:pPr><w:pStyle w:val="Analytic"/></w:pPr>' +
+          '<w:r><w:t>so the aff loses</w:t></w:r></w:p></w:body>',
+      ),
+    );
+    writeText(
+      parts,
+      'word/styles.xml',
+      readText(parts, 'word/styles.xml')!.replace(
+        '</w:styles>',
+        '<w:style w:type="paragraph" w:styleId="Analytic"><w:name w:val="Analytic"/>' +
+          '<w:pPr><w:ind w:left="720"/></w:pPr></w:style></w:styles>',
+      ),
+    );
+    const out = unzip(applyTemplate(zip(parts), blueprint(), {}, 'template:lay.docx'));
+    expect(documentOf(out)).toContain('w:val="Analytic"');
+    expect(readText(out, 'word/styles.xml')).toContain('w:styleId="Analytic"');
+    // and the template still wins where it says something
+    expect(readText(out, 'word/styles.xml')).toContain('Palatino Linotype');
+  });
+
   it('marks the document so activation survives the file', () => {
     expect(readMarker(applied())).toBe('template:lay.docx');
   });

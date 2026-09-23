@@ -72,9 +72,16 @@ function partFor(owner: string, target: string): string {
 const relsFor = (partName: string): string =>
   `${partName.slice(0, partName.lastIndexOf('/'))}/_rels/${partName.slice(partName.lastIndexOf('/') + 1)}.rels`;
 
+const SECT_PR = /<w:sectPr\b[\s\S]*?<\/w:sectPr>|<w:sectPr\b[^>]*\/>/g;
+
+/** the body's own, which is the last: the ones before it end a section break. */
+const bodySectPr = (documentXml: string): RegExpMatchArray | null => {
+  const all = [...documentXml.matchAll(SECT_PR)];
+  return all.length ? all[all.length - 1]! : null;
+};
+
 export function readSectPr(documentXml: string): string | null {
-  const all = [...documentXml.matchAll(/<w:sectPr\b[\s\S]*?<\/w:sectPr>|<w:sectPr\b[^>]*\/>/g)];
-  return all.length ? all[all.length - 1]![0] : null;
+  return bodySectPr(documentXml)?.[0] ?? null;
 }
 
 /** a header brings its own rels: a crest is an image part it points at, and
@@ -286,8 +293,9 @@ function applySectPr(documentXml: string, sectPr: string): string {
   if (!/<w:document\b[^>]*xmlns:r=/.test(xml)) {
     xml = xml.replace(/<w:document\b/, `<w:document xmlns:r="${R_NS}"`);
   }
-  if (/<w:sectPr\b/.test(xml)) {
-    return xml.replace(/<w:sectPr\b[\s\S]*?<\/w:sectPr>|<w:sectPr\b[^>]*\/>/, sectPr);
-  }
-  return xml.replace('</w:body>', `${sectPr}</w:body>`);
+  const body = bodySectPr(xml);
+  // written where it was read: replacing the first would hand the template's
+  // page setup to a section break and leave the body on cardmirror's
+  if (!body) return xml.replace('</w:body>', `${sectPr}</w:body>`);
+  return xml.slice(0, body.index!) + sectPr + xml.slice(body.index! + body[0].length);
 }

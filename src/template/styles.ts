@@ -11,7 +11,7 @@
 // the lay names (Tag, Cite, card, Underline) are all in the legacy table, which
 // is what makes them safe.
 //
-// read off the shipped 1.3.0 parse worker.
+// read off the shipped 1.3.0 parse worker; the tables still match 1.11.0.
 
 /** cardmirror's block vocabulary — the node types its exporter can emit. */
 export type BlockType =
@@ -165,6 +165,50 @@ function rolesIn(styles: readonly StyleInfo[], kind?: StyleInfo['kind']): Map<st
   return byRole;
 }
 
+/** every `<w:style>` in a part, by the id it defines. */
+function blocksById(stylesXml: string): Map<string, string> {
+  const out = new Map<string, string>();
+  for (const match of stylesXml.matchAll(/<w:style\b[^>]*>[\s\S]*?<\/w:style>/g)) {
+    const id = attr(/^<[^>]*>/.exec(match[0])![0], 'w:styleId');
+    if (id) out.set(id, match[0]);
+  }
+  return out;
+}
+
+const REFERENCED = /<w:(?:pStyle|rStyle|tblStyle)\b[^>]*\bw:val="([^"]*)"/g;
+const INHERITED = /<w:(?:basedOn|link|next)\b[^>]*\bw:val="([^"]*)"/g;
+
+/** the template's `styles.xml` lands whole on cardmirror's, so an id the
+ *  document still names and the template does not define resolves to nothing
+ *  and word renders that text as Normal. cardmirror's own definition is
+ *  carried in beside the template's instead.
+ *
+ *  null when there is nothing to carry: the template's part stands as it is. */
+export function mergeStyles(
+  exportXml: string | null,
+  templateXml: string | null,
+  documentXml: string,
+): string | null {
+  if (!exportXml || !templateXml || !templateXml.includes('</w:styles>')) return null;
+
+  const defined = new Set(readStyles(templateXml).map((style) => style.id));
+  const available = blocksById(exportXml);
+  const carried = new Map<string, string>();
+
+  const wanted = [...documentXml.matchAll(REFERENCED)].map((match) => match[1]!);
+  for (let id = wanted.shift(); id !== undefined; id = wanted.shift()) {
+    if (defined.has(id) || carried.has(id)) continue;
+    const block = available.get(id);
+    if (!block) continue;
+    carried.set(id, block);
+    // a style based on or linked to one nothing else names is half a definition
+    for (const link of block.matchAll(INHERITED)) wanted.push(link[1]!);
+  }
+
+  if (carried.size === 0) return null;
+  return templateXml.replace('</w:styles>', `${[...carried.values()].join('')}</w:styles>`);
+}
+
 export interface BareStyles {
   cite_paragraph: string | null;
   card_body: string | null;
@@ -202,8 +246,8 @@ export function deriveStyleMap(styles: readonly StyleInfo[]): Record<string, str
           .get(wanted.role)
           ?.find((id) => id !== exportId)
       : undefined;
-    // never map onto a style the template does not define: word shows that
-    // text unstyled, which is worse than cardmirror's own default
+    // never map onto a style the template does not define: the id is left as
+    // cardmirror wrote it, and `mergeStyles` carries its definition over
     if (preferred && preferred !== exportId) map[exportId] = preferred;
     else if (defined.has(exportId)) map[exportId] = exportId;
   }
