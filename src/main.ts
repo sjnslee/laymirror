@@ -71,7 +71,7 @@ const templateIdFor = (bag: Store, key: string | null): string | null =>
 type Found = { path: string } | { error: string };
 
 const UNLISTED =
-  'cardmirror has not said where this file is — press locate and point at it';
+  'Cardmirror has not said where this file is — press Locate and point at it';
 
 /** last path stored per name, so an unchanged answer does not rewrite the
  *  storage bag on every tick. */
@@ -87,7 +87,7 @@ function remember(api: PluginApi, path: string, at: number): void {
 }
 
 function locate(api: PluginApi): Found {
-  if (!hasFileApi()) return { error: 'laymirror only works in the desktop app' };
+  if (!hasFileApi()) return { error: 'Laymirror only works in the desktop app' };
 
   const bag = store(api);
   const found = resolveDocPath(api.docInfo(), (name) => bag.located(name));
@@ -96,7 +96,7 @@ function locate(api: PluginApi): Found {
     return { path: found.path };
   }
   if (found.kind === 'ambiguous') {
-    return { error: 'two open files have this name, so laymirror cannot tell them apart' };
+    return { error: 'Two open files have this name, so Laymirror cannot tell them apart' };
   }
 
   return {
@@ -104,8 +104,8 @@ function locate(api: PluginApi): Found {
       found.because === 'unlisted'
         ? UNLISTED
         : found.because === 'not-a-docx'
-          ? 'this document is not a .docx — save it as one first'
-          : 'no document is open',
+          ? 'This document is not a .docx — save it as one first'
+          : 'No document is open',
   };
 }
 
@@ -142,15 +142,15 @@ async function reread(bag: Store, templateId: string): Promise<void> {
 }
 
 const SAVED_MEANWHILE =
-  'the document was saved again while laymirror was writing — nothing was overwritten';
+  'The document was saved again while Laymirror was writing — nothing was overwritten';
 
 /** why a write did not happen, in words a user can act on. */
 function refused(err: unknown, path: string): string {
   const message = err instanceof Error ? err.message : String(err);
   if (/no baseline in this window/.test(message)) {
-    return `this window does not have ${path} open — press locate and point at the open file`;
+    return `This window does not have ${path} open — press Locate and point at the open file`;
   }
-  if (/EMODIFIED/.test(message)) return 'the file changed on disk — laymirror left it alone';
+  if (/EMODIFIED/.test(message)) return 'The file changed on disk — Laymirror left it alone';
   return message;
 }
 
@@ -169,7 +169,7 @@ async function rewrite(
   const before = await statFile(path).catch(() => null);
   const file = await readFile(path);
   if (!before || !file) {
-    return { ok: false, why: 'cardmirror would not let laymirror read the file' };
+    return { ok: false, why: 'Cardmirror would not let Laymirror read the file' };
   }
 
   try {
@@ -202,14 +202,14 @@ async function applyOnce(api: PluginApi, fresh = false): Promise<Outcome> {
 
   const key = found.path;
   const templateId = templateIdFor(bag, key);
-  if (!templateId) return record({ ok: false, why: 'no template loaded — load one first' });
+  if (!templateId) return record({ ok: false, why: 'No template loaded — load one first' });
 
   // asked for by hand: go back to the file first. a background save does not,
   // since the template cannot change between two keystrokes
   if (fresh) await reread(bag, templateId);
 
   const blueprint = blueprintFor(bag, templateId);
-  if (!blueprint) return record({ ok: false, why: 'no template loaded — load one first' });
+  if (!blueprint) return record({ ok: false, why: 'No template loaded — load one first' });
 
   const written = await rewrite(key, (bytes) =>
     applyTemplate(bytes, blueprint, bag.valuesFor(key, templateId), templateId),
@@ -254,7 +254,7 @@ async function onSaved(api: PluginApi): Promise<void> {
   // a read that caught the file half-written, or a save that landed mid write,
   // is followed by a save the watcher picks up: not worth shouting about
   if (outcome.ok || outcome.why === SAVED_MEANWHILE) return;
-  if (!/not a complete docx/.test(outcome.why)) say(outcome.why, 'problem');
+  if (!/not a complete docx/i.test(outcome.why)) say(outcome.why, 'problem');
 }
 
 /** take laymirror's marker off the file, so it stops offering itself. */
@@ -270,10 +270,10 @@ async function unmark(api: PluginApi): Promise<void> {
     try {
       parts = unzip(bytes);
     } catch {
-      throw new Error('the document is not readable as a docx right now');
+      throw new Error('The document is not readable as a docx right now');
     }
     // a partial read mid-save must abort, never round-trip into a write
-    if (!isDocx(parts)) throw new Error('the document looks incomplete — try again in a moment');
+    if (!isDocx(parts)) throw new Error('The document looks incomplete — try again in a moment');
     if (!readMarker(parts)) return bytes;
     clearMarker(parts);
     return zip(parts);
@@ -321,22 +321,16 @@ async function adopt(api: PluginApi, key: string): Promise<void> {
   const template = marker.replace(/^template:/, '');
   say(
     bag.templateInfo(marker)
-      ? `${name} was formatted with ${template} — turn lay formatting on to keep it`
+      ? `${name} was formatted with ${template} — turn template formatting on to keep it`
       : `${name} was formatted with ${template}, which is not loaded here — load it first`,
   );
   if (panelOpen()) refresh();
 }
 
-/** the flag as this session found it. an installed laymirror loads only because
- *  its flag is true, and from then on reads it the way cardmirror does: anything
- *  but true is off, which is what an uninstall leaves. one loaded from a file
- *  has no flag, and runs until the session ends or a flag says false. */
-const flagAtLoad = enabledFlag(ID);
-
-const switchedOff = (): boolean => {
-  const flag = enabledFlag(ID);
-  return flagAtLoad === true ? flag !== true : flag === false;
-};
+/** only cardmirror's settings switch writes `false` here. a flag that is gone
+ *  is not an off switch: cardmirror deletes the entry for every plugin its
+ *  installed list does not name, which is every plugin loaded from a file. */
+const switchedOff = (): boolean => enabledFlag(ID) === false;
 
 /** everything laymirror has running, stopped. api v1 has no unload hook, so
  *  `sync` noticing the enabled flag is the only thing that can call this. */
@@ -402,19 +396,19 @@ async function toggleLay(api: PluginApi): Promise<void> {
   if (!on) {
     await unmark(api);
     last = null;
-    say('lay formatting off');
+    say('Template formatting off');
     return;
   }
 
   // no template yet is the expected first step, not a failure
   if (!bag.templateInfo(templateIdFor(bag, key))) {
-    say('lay formatting on — load a template next');
+    say('Template formatting on — load a template next');
     return;
   }
 
   // apply now rather than at the next save: turning it on and seeing nothing
   // change looks the same as it not having worked
-  await applyAndReport(api, 'lay formatting on — template applied');
+  await applyAndReport(api, 'Template formatting on — template applied');
 }
 
 async function loadTemplate(api: PluginApi): Promise<void> {
@@ -444,7 +438,7 @@ async function loadTemplate(api: PluginApi): Promise<void> {
   // looks loaded until the next launch. read it back rather than trust it
   if (!bag.templateInfo(id)) {
     say(
-      `${picked.name} is too large for cardmirror to keep — laymirror needs a smaller template`,
+      `${picked.name} is too large for Cardmirror to keep — Laymirror needs a smaller template`,
       'problem',
     );
     return;
@@ -465,7 +459,7 @@ async function loadTemplate(api: PluginApi): Promise<void> {
     await applyAndReport(api, `${found}, applied`);
     return;
   }
-  say(`${found} — turn lay formatting on to apply it`);
+  say(`${found} — turn template formatting on to apply it`);
 }
 
 /** cardmirror never said where this document is, so ask. the picker is also
@@ -473,7 +467,7 @@ async function loadTemplate(api: PluginApi): Promise<void> {
 async function locateDoc(api: PluginApi): Promise<void> {
   const name = docName();
   if (!name) {
-    say('no document is open', 'problem');
+    say('No document is open', 'problem');
     return;
   }
 
@@ -482,7 +476,7 @@ async function locateDoc(api: PluginApi): Promise<void> {
 
   // a different file with the template written onto it is worse than no file
   if (picked.name !== name) {
-    say(`that is ${picked.name}, and the open document is ${name}`, 'problem');
+    say(`That is ${picked.name}, and the open document is ${name}`, 'problem');
     return;
   }
 
@@ -528,23 +522,23 @@ function openLaymirror(api: PluginApi): void {
     onApply: async (values) => {
       const key = docKey(api);
       if (key) bag().setValues(key, templateIdFor(bag(), key), values);
-      await applyAndReport(api, 'template applied');
+      await applyAndReport(api, 'Template applied');
     },
     actions: [
-      { label: 'locate…', run: () => locateDoc(api) },
-      { label: 'diagnostics', run: () => openDiagnostics(api) },
+      { label: 'Locate…', run: () => locateDoc(api) },
+      { label: 'Diagnostics', run: () => openDiagnostics(api) },
     ],
   });
 }
 
 register({
   id: ID,
-  name: 'laymirror',
+  name: 'Laymirror',
   apiVersion: 1,
   commands: [
     {
       id: `${ID}.panel`,
-      label: 'laymirror: open',
+      label: 'Laymirror: Open',
       keywords: ['lay', 'debate', 'template', 'header', 'settings'],
       // the alt chord is a fallback for when cardmirror has taken the first
       defaultKey: ['Mod-Shift-l', 'Mod-Alt-l'],
@@ -552,7 +546,7 @@ register({
     },
     {
       id: `${ID}.toggle-lay`,
-      label: 'laymirror: turn lay formatting on or off',
+      label: 'Laymirror: Turn template formatting on or off',
       keywords: ['lay', 'debate', 'parent', 'judge'],
       run: async (api) => {
         ensureSession(api);
@@ -561,16 +555,16 @@ register({
     },
     {
       id: `${ID}.apply`,
-      label: 'laymirror: apply the template now',
+      label: 'Laymirror: Apply the template now',
       keywords: ['template', 'header', 'apply', 'format'],
       run: async (api) => {
         ensureSession(api);
-        await applyAndReport(api, 'template applied');
+        await applyAndReport(api, 'Template applied');
       },
     },
     {
       id: `${ID}.locate`,
-      label: 'laymirror: point at the open document on disk',
+      label: 'Laymirror: Point at the open document on disk',
       keywords: ['locate', 'find', 'path', 'file', 'missing'],
       run: async (api) => {
         ensureSession(api);
@@ -579,7 +573,7 @@ register({
     },
     {
       id: `${ID}.diagnose`,
-      label: 'laymirror: diagnostics',
+      label: 'Laymirror: Diagnostics',
       keywords: ['debug', 'diagnose', 'why'],
       run: (api) => openDiagnostics(api),
     },

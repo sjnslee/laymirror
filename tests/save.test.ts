@@ -180,26 +180,20 @@ it('stops writing once cardmirror switches it off', async () => {
   expect(readText(unzip(disk), 'word/header1.xml')).toBeNull();
 });
 
-// installed, it reads the flag the way cardmirror does: an uninstall that
-// clears it leaves laymirror off, not running until relaunch
-it('stops once an installed copy loses its flag', async () => {
-  // retire the copy this file booted, which loaded with no flag
-  localStorage.setItem('pmd-plugins', JSON.stringify({ enabled: { laymirror: false } }));
-  await settle();
-
+// cardmirror deletes the entry for every plugin its installed list does not
+// name, which is every plugin loaded from a file. uninstalling writes `false`
+// instead, so a flag that is simply gone is not an instruction to stop
+it('keeps working after cardmirror prunes the flag', async () => {
   localStorage.setItem('pmd-plugins', JSON.stringify({ enabled: { laymirror: true } }));
   vi.resetModules();
   await import('../src/main.js');
   await settle();
-  cardmirrorSaves();
-  await settle();
-  expect(readText(unzip(disk), 'word/header1.xml')).toContain('PAGE');
 
   localStorage.setItem('pmd-plugins', JSON.stringify({ enabled: {} }));
   await settle();
   cardmirrorSaves();
   await settle();
-  expect(readText(unzip(disk), 'word/header1.xml')).toBeNull();
+  expect(readText(unzip(disk), 'word/header1.xml')).toContain('PAGE');
 });
 
 // "load plugin from file" writes no flag, and that is how it runs today

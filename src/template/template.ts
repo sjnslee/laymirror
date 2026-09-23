@@ -76,7 +76,7 @@ export function read(bytes: Uint8Array, name: string): ReadResult {
   try {
     parts = unzip(bytes);
   } catch {
-    return { ok: false, error: `could not read ${name} — is it a word document or template?` };
+    return { ok: false, error: `Could not read ${name} — is it a word document or template?` };
   }
   if (!isDocx(parts)) return { ok: false, error: `${name} is not a word document or template` };
 
