@@ -2,7 +2,7 @@
 
 Templates must be a `.docx`, `.docm`, `.dotx` or `.dotm`. laymirror keeps only the styles, theme,
 headers, footers and page setup, which must come to under 1 MB across every template in use.
-Upload in the panel under **template**.
+Upload in the panel under **Template**.
 
 ## Styles
 

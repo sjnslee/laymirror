@@ -1,13 +1,19 @@
 // what laymirror can see, printed. when a command does nothing, this says which
 // lookup came back empty.
 
-import { currentFilename, DOC_NAME_CHIP, LS, storageKey } from '../host/cardmirror.js';
-import { resolveDocPath } from '../host/paths.js';
-import type { PluginApi } from '../host/plugin-api.js';
-import { store } from '../state.js';
+import {
+  currentFilename,
+  DOC_NAME_CHIP,
+  enabledFlag,
+  LS,
+  storageKey,
+} from "../host/cardmirror.js";
+import { resolveDocPath } from "../host/paths.js";
+import type { PluginApi } from "../host/plugin-api.js";
+import { store } from "../state.js";
 
-const ROOT_ID = 'laymirror-diagnose';
-const STYLE_ID = 'laymirror-diagnose-style';
+const ROOT_ID = "laymirror-diagnose";
+const STYLE_ID = "laymirror-diagnose-style";
 
 const CSS = `
 #${ROOT_ID} {
@@ -67,57 +73,91 @@ interface Line {
 }
 
 const show = (value: unknown): string => {
-  if (value === null) return 'null';
-  if (value === undefined) return 'undefined';
-  if (typeof value === 'string') return value === '' ? '(empty string)' : value;
+  if (value === null) return "null";
+  if (value === undefined) return "undefined";
+  if (typeof value === "string") return value === "" ? "(empty string)" : value;
   return JSON.stringify(value);
 };
 
 function collect(api: PluginApi): Line[] {
   const lines: Line[] = [];
-  const add = (label: string, value: unknown) => lines.push({ label, value: show(value) });
+  const add = (label: string, value: unknown) =>
+    lines.push({ label, value: show(value) });
 
-  const electron = (window as unknown as { electronAPI?: Record<string, unknown> }).electronAPI;
-  add('electronAPI', electron ? 'present' : 'MISSING — not the desktop app?');
+  const electron = (
+    window as unknown as { electronAPI?: Record<string, unknown> }
+  ).electronAPI;
+  add("electronAPI", electron ? "present" : "MISSING — not the desktop app?");
   if (electron) {
-    for (const method of ['readFileAtPath', 'saveExisting', 'statFile', 'openFile']) {
-      add(`  .${method}`, typeof electron[method] === 'function' ? 'ok' : 'MISSING');
+    for (const method of [
+      "readFileAtPath",
+      "saveExisting",
+      "statFile",
+      "openFile",
+    ]) {
+      add(
+        `  .${method}`,
+        typeof electron[method] === "function" ? "ok" : "MISSING",
+      );
     }
   }
 
-  add('doc-name chip', document.getElementById(DOC_NAME_CHIP)?.textContent ?? null);
-  add('document.title', document.title);
-  add('currentFilename()', currentFilename());
-  add('.ProseMirror', document.querySelector('.ProseMirror') ? 'found' : 'MISSING');
-  add('#editor', document.getElementById('editor') ? 'found' : 'MISSING');
+  add(
+    "doc-name chip",
+    document.getElementById(DOC_NAME_CHIP)?.textContent ?? null,
+  );
+  add("document.title", document.title);
+  add("currentFilename()", currentFilename());
+  add(
+    ".ProseMirror",
+    document.querySelector(".ProseMirror") ? "found" : "MISSING",
+  );
+  add("#editor", document.getElementById("editor") ? "found" : "MISSING");
 
   let recents: unknown = null;
   try {
-    recents = JSON.parse(localStorage.getItem(LS.recents) ?? 'null');
+    recents = JSON.parse(localStorage.getItem(LS.recents) ?? "null");
   } catch (err) {
     recents = `unreadable: ${String(err)}`;
   }
   if (Array.isArray(recents)) {
-    add('pmd-recent-files', `${recents.length} entries`);
+    add("pmd-recent-files", `${recents.length} entries`);
     for (const entry of recents.slice(0, 6)) {
-      const e = entry as { filename?: string; format?: string; handle?: string | null };
-      add(`  ${e.filename ?? '?'}`, `format=${e.format ?? '?'} handle=${e.handle ? 'yes' : 'NO'}`);
+      const e = entry as {
+        filename?: string;
+        format?: string;
+        handle?: string | null;
+      };
+      add(
+        `  ${e.filename ?? "?"}`,
+        `format=${e.format ?? "?"} handle=${e.handle ? "yes" : "NO"}`,
+      );
     }
   } else {
-    add('pmd-recent-files', recents);
+    add("pmd-recent-files", recents);
   }
 
   const bag = store(api);
   const name = currentFilename();
-  add('api.docInfo()', api.docInfo());
+  add("api.docInfo()", api.docInfo());
   // competes with the history on recency
-  add('path the user pointed at', name ? bag.located(name) : null);
-  add('resolveDocPath()', resolveDocPath(api.docInfo(), (filename) => bag.located(filename)));
+  add("pointed path", name ? bag.located(name) : null);
+  add(
+    "resolveDocPath()",
+    resolveDocPath(api.docInfo(), (filename) => bag.located(filename)),
+  );
+
+  // anything but true here stops laymirror and closes the panel
+  add("pmd-plugins", localStorage.getItem(LS.plugins));
+  add("enabled flag", enabledFlag("laymirror"));
 
   // read before any command has run, so it decides whether a plain save is
   // picked up at all
-  const held = localStorage.getItem(storageKey('laymirror'));
-  add('plugin:laymirror', held === null ? 'empty — nothing turned on yet' : `${held.length} bytes`);
+  const held = localStorage.getItem(storageKey("laymirror"));
+  add(
+    "plugin:laymirror",
+    held === null ? "empty — nothing turned on yet" : `${held.length} bytes`,
+  );
 
   return lines;
 }
@@ -126,17 +166,19 @@ function report(api: PluginApi): string {
   try {
     const lines = collect(api);
     const width = Math.max(...lines.map((line) => line.label.length));
-    return lines.map((line) => `${line.label.padEnd(width)}  ${line.value}`).join('\n');
+    return lines
+      .map((line) => `${line.label.padEnd(width)}  ${line.value}`)
+      .join("\n");
   } catch (err) {
-    return `diagnostics threw: ${String(err)}\n${(err as Error)?.stack ?? ''}`;
+    return `diagnostics threw: ${String(err)}\n${(err as Error)?.stack ?? ""}`;
   }
 }
 
 function button(label: string, run: () => void): HTMLButtonElement {
-  const el = document.createElement('button');
-  el.type = 'button';
+  const el = document.createElement("button");
+  el.type = "button";
   el.textContent = label;
-  el.addEventListener('click', run);
+  el.addEventListener("click", run);
   return el;
 }
 
@@ -144,51 +186,51 @@ export function openDiagnostics(api: PluginApi): void {
   document.getElementById(ROOT_ID)?.remove();
 
   if (!document.getElementById(STYLE_ID)) {
-    const sheet = document.createElement('style');
+    const sheet = document.createElement("style");
     sheet.id = STYLE_ID;
     sheet.textContent = CSS;
     document.head.append(sheet);
   }
 
-  const root = document.createElement('div');
+  const root = document.createElement("div");
   root.id = ROOT_ID;
-  root.setAttribute('contenteditable', 'false');
+  root.setAttribute("contenteditable", "false");
 
   const close = (): void => {
-    document.removeEventListener('keydown', onKey, true);
+    document.removeEventListener("keydown", onKey, true);
     root.remove();
   };
   // capture, because cardmirror binds escape too
   const onKey = (event: KeyboardEvent): void => {
-    if (event.key !== 'Escape') return;
+    if (event.key !== "Escape") return;
     event.preventDefault();
     event.stopPropagation();
     close();
   };
-  document.addEventListener('keydown', onKey, true);
-  root.addEventListener('click', (event) => {
+  document.addEventListener("keydown", onKey, true);
+  root.addEventListener("click", (event) => {
     if (event.target === root) close();
   });
 
-  const dialog = document.createElement('div');
-  dialog.className = 'lm-dialog';
+  const dialog = document.createElement("div");
+  dialog.className = "lm-dialog";
 
-  const title = document.createElement('h2');
-  title.textContent = 'laymirror diagnostics';
+  const title = document.createElement("h2");
+  title.textContent = "Laymirror diagnostics";
 
   const text = report(api);
-  const pre = document.createElement('pre');
+  const pre = document.createElement("pre");
   pre.textContent = text;
 
-  const copy = button('copy', () => {
+  const copy = button("Copy", () => {
     void navigator.clipboard?.writeText(text);
-    copy.textContent = 'copied';
-    setTimeout(() => void (copy.textContent = 'copy'), 1500);
+    copy.textContent = "Copied";
+    setTimeout(() => void (copy.textContent = "Copy"), 1500);
   });
 
-  const actions = document.createElement('div');
-  actions.className = 'lm-actions';
-  actions.append(copy, button('close', close));
+  const actions = document.createElement("div");
+  actions.className = "lm-actions";
+  actions.append(copy, button("Close", close));
 
   dialog.append(title, pre, actions);
   root.append(dialog);

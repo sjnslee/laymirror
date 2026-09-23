@@ -9,7 +9,11 @@ particularly with printed lay debate evidence
 
 ## Install
 
-As a non whitelisted plugin, installation needs building and loading separately:
+As a whitelisted plugin, installation can be done within Cardmirror natively
+
+- in cardmirror: settings -> plugins -> browse -> Laymirror -> install
+
+Alternatively: to load from file, build plugin.js:
 
 ```
 npm install
@@ -25,11 +29,11 @@ cmd+shift+l opens interface (alternatively cmd+alt+l)
 
 Other features are similarly integrated into the command palette without a set keybind:
 
-- `laymirror: open`
-- `laymirror: turn lay formatting on or off`
-- `laymirror: apply the template now`
-- `laymirror: point at the open document on disk`
-- `laymirror: diagnostics`
+- `Laymirror: Open`
+- `Laymirror: Turn template formatting on or off`
+- `Laymirror: Apply the template now`
+- `Laymirror: Point at the open document on disk`
+- `Laymirror: Diagnostics`
 
 ## Templates
 

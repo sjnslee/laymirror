@@ -119,6 +119,7 @@ const CSS = `
   background: var(--pmd-c-bg, #fff);
   color: inherit;
   font: inherit;
+  font-size: 12px;
   cursor: pointer;
 }
 #${PANEL_ID} button:hover { background: var(--pmd-c-button-hover, rgba(0, 0, 0, .06)) }
@@ -273,7 +274,7 @@ export function refresh(): void {
 
   const title = document.createElement("h2");
   title.className = "lm-title";
-  title.textContent = "laymirror";
+  title.textContent = "Laymirror";
   const close = button("×", closePanel);
   close.className = "lm-close";
   const head = document.createElement("div");
@@ -284,8 +285,8 @@ export function refresh(): void {
   const lay = document.createElement("section");
   lay.append(
     row(
-      it.on() ? "lay formatting is on" : "lay formatting is off",
-      button(it.on() ? "turn off" : "turn on", () => it.onToggle(), !it.on()),
+      it.on() ? "Template formatting:" : "Template formatting: off",
+      button(it.on() ? "Turn Off" : "Turn On", () => it.onToggle(), !it.on()),
     ),
   );
   body.append(lay);
@@ -293,12 +294,7 @@ export function refresh(): void {
   // off is off: a document laymirror is not touching has no template, no header
   // and nothing written to it, and offering all three reads as if it did
   if (!it.on()) {
-    body.append(
-      note(
-        "using cardmirror\u2019s own formatting. turn lay formatting on to apply a template every time you save.",
-      ),
-      actionRow(it),
-    );
+    body.append(note("Using Cardmirror\u2019s formatting"), actionRow(it));
     root.replaceChildren(...body.childNodes);
     return;
   }
@@ -310,12 +306,12 @@ export function refresh(): void {
   const name = it.templateName();
   template.append(
     row(
-      "template",
-      button(name ? "change…" : "load…", () => it.onLoadTemplate()),
+      "Template",
+      button(name ? "Change…" : "Load…", () => it.onLoadTemplate()),
     ),
     // the path, not the name: the name is the last segment of it
     note(
-      name ? (it.templatePath() ?? name) : "none loaded",
+      name ? (it.templatePath() ?? name) : "None loaded",
       name ? "lm-path" : "lm-note",
     ),
   );
@@ -328,7 +324,7 @@ export function refresh(): void {
   if (fields.length > 0) {
     const section = document.createElement("section");
     const heading = document.createElement("h2");
-    heading.textContent = "header";
+    heading.textContent = "Header";
     section.append(heading);
 
     for (const field of fields) {
@@ -345,7 +341,9 @@ export function refresh(): void {
       input.placeholder = field.label;
       // held as typed, so a plain ⌘S writes what is on screen. no refresh
       // here: rebuilding the panel mid-word would take the caret with it
-      input.addEventListener("input", () => hold(() => it.onChange(typed(inputs))));
+      input.addEventListener("input", () =>
+        hold(() => it.onChange(typed(inputs))),
+      );
       // leaving a field is a pause by definition, and cheaper to write on than
       // to wait out
       input.addEventListener("blur", flush);
@@ -359,9 +357,9 @@ export function refresh(): void {
   const done = document.createElement("section");
   done.append(
     row(
-      "file status",
+      "File status",
       button(
-        "apply now",
+        "Apply Now",
         () => {
           flush();
           return it.onApply(typed(inputs));
@@ -373,7 +371,7 @@ export function refresh(): void {
   const outcome = it.outcome();
   const line =
     outcome === null
-      ? note("nothing written yet")
+      ? note("Nothing written yet")
       : outcome.ok
         ? note(`${outcome.template} applied at ${clock(outcome.at)}`, "lm-done")
         : note(outcome.why, "lm-problem");

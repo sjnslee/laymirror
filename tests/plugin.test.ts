@@ -33,7 +33,7 @@ let host: Host;
 
 /** `listed: false` boots with an empty pmd-recent-files, which is what
  *  cardmirror leaves behind for a document it opened into a spawned window. */
-async function boot({ listed = true } = {}): Promise<Host> {
+async function boot({ listed = true, plugins = null as string | null } = {}): Promise<Host> {
   document.body.replaceChildren();
   document.head.replaceChildren();
   stubStorage();
@@ -103,6 +103,8 @@ async function boot({ listed = true } = {}): Promise<Host> {
       : '[]',
   );
 
+  if (plugins !== null) localStorage.setItem('pmd-plugins', plugins);
+
   vi.resetModules();
   await import('../src/main.js');
   if (!definition) throw new Error('the plugin did not register');
@@ -171,31 +173,44 @@ describe('the panel', () => {
 
   // a document laymirror is not touching has no template, no header and
   // nothing written to it, and showing all three reads as if it did
-  it('shows only the switch while lay formatting is off', async () => {
+  it('shows only the switch while template formatting is off', async () => {
     await host.run('laymirror.panel');
-    expect(panel()!.textContent).toContain('lay formatting is off');
+    expect(panel()!.textContent).toContain('Template formatting: off');
     expect(panel()!.textContent).not.toContain('the file on disk');
     expect(panel()!.querySelectorAll('input')).toHaveLength(0);
     expect(buttons().map((b) => b.textContent)).toEqual([
       '×',
-      'turn on',
-      'locate\u2026',
-      'diagnostics',
+      'Turn On',
+      'Locate\u2026',
+      'Diagnostics',
     ]);
+  });
+
+  // cardmirror deletes pmd-plugins entries for every plugin that is not
+  // installed, so a file-loaded laymirror watches its own flag disappear. that
+  // is not the settings switch being turned off, and it must not stop anything
+  it('stays open when a stale enabled flag is pruned', async () => {
+    host = await boot({ plugins: '{"enabled":{"laymirror":true}}' });
+    localStorage.setItem('pmd-plugins', '{"enabled":{}}');
+    await host.run('laymirror.panel');
+    await click('Turn On');
+    expect(panel()).not.toBeNull();
+    await click('Turn Off');
+    expect(panel()).not.toBeNull();
   });
 
   it('opens the rest out once it is turned on', async () => {
     await host.run('laymirror.panel');
-    await click('turn on');
+    await click('Turn On');
     const shown = panel()!.textContent!;
-    expect(shown).toContain('template');
-    expect(shown).toContain('file status');
+    expect(shown).toContain('Template');
+    expect(shown).toContain('File status');
   });
 
   it('offers the header fields once a template is loaded', async () => {
     await host.run('laymirror.panel');
-    await click('turn on');
-    await click('load…');
+    await click('Turn On');
+    await click('Load…');
     const labels = [...panel()!.querySelectorAll('label span')].map((el) => el.textContent);
     expect(labels).toEqual(['Team Code', 'lay']);
   });
@@ -203,9 +218,9 @@ describe('the panel', () => {
   // turning it on before loading a template is the expected first step
   it('asks for a template rather than reporting a failure', async () => {
     await host.run('laymirror.panel');
-    await click('turn on');
-    expect(host.said()).toBe('lay formatting on — load a template next');
-    expect(panel()!.textContent).toContain('nothing written yet');
+    await click('Turn On');
+    expect(host.said()).toBe('Template formatting on — load a template next');
+    expect(panel()!.textContent).toContain('Nothing written yet');
   });
 });
 
@@ -233,8 +248,8 @@ describe('diagnostics', () => {
 describe('turning it on', () => {
   const turnOn = async () => {
     await host.run('laymirror.panel');
-    await click('turn on');
-    await click('load…');
+    await click('Turn On');
+    await click('Load…');
   };
 
   it('puts the school header onto the file straight away', async () => {
@@ -252,20 +267,20 @@ describe('turning it on', () => {
 
   it('turns back off and leaves the file alone', async () => {
     await turnOn();
-    await click('turn off');
-    expect(host.said()).toBe('lay formatting off');
+    await click('Turn Off');
+    expect(host.said()).toBe('Template formatting off');
   });
 });
 
 describe('applying the header', () => {
   it('writes what was typed into the file', async () => {
     await host.run('laymirror.panel');
-    await click('turn on');
-    await click('load…');
+    await click('Turn On');
+    await click('Load…');
     const input = panel()!.querySelector('input') as HTMLInputElement;
     input.value = 'WDL 27-28';
     input.dispatchEvent(new Event('input'));
-    await click('apply now');
+    await click('Apply Now');
     expect(readText(unzip(host.disk()), 'word/header1.xml')).toContain('WDL 27-28');
   });
 
@@ -273,17 +288,17 @@ describe('applying the header', () => {
   // bring that back rather than whatever was typed before
   it('puts the template text back when a field is cleared', async () => {
     await host.run('laymirror.panel');
-    await click('turn on');
-    await click('load…');
+    await click('Turn On');
+    await click('Load…');
     const field = () => panel()!.querySelector('input') as HTMLInputElement;
     field().value = 'WDL 27-28';
     field().dispatchEvent(new Event('input'));
-    await click('apply now');
+    await click('Apply Now');
     expect(readText(unzip(host.disk()), 'word/header1.xml')).toContain('WDL 27-28');
 
     field().value = '';
     field().dispatchEvent(new Event('input'));
-    await click('apply now');
+    await click('Apply Now');
     const xml = readText(unzip(host.disk()), 'word/header1.xml')!;
     expect(xml).not.toContain('WDL 27-28');
     expect(xml).toContain('Team ');
@@ -302,18 +317,18 @@ describe('applying the header', () => {
       };
     const before = host.disk();
     await host.run('laymirror.panel');
-    await click('turn on');
-    await click('load…');
+    await click('Turn On');
+    await click('Load…');
     expect(host.disk()).toBe(before);
-    expect(host.said()).toContain('press locate');
+    expect(host.said()).toContain('press Locate');
   });
 
   it('remembers it for the next time the panel opens', async () => {
     await host.run('laymirror.panel');
-    await click('turn on');
-    await click('load…');
+    await click('Turn On');
+    await click('Load…');
     (panel()!.querySelector('input') as HTMLInputElement).value = 'WDL 27-28';
-    await click('apply now');
+    await click('Apply Now');
     await host.run('laymirror.panel');
     await host.run('laymirror.panel');
     expect((panel()!.querySelector('input') as HTMLInputElement).value).toBe('WDL 27-28');
@@ -323,8 +338,8 @@ describe('applying the header', () => {
 describe('re-reading the template', () => {
   const load = async () => {
     await host.run('laymirror.panel');
-    await click('turn on');
-    await click('load…');
+    await click('Turn On');
+    await click('Load…');
   };
 
   const header = () => readText(unzip(host.disk()), 'word/header1.xml')!;
@@ -344,7 +359,7 @@ describe('re-reading the template', () => {
   it('takes the template file again when apply is pressed', async () => {
     await load();
     host.editTemplate(edited());
-    await click('apply now');
+    await click('Apply Now');
     expect(header()).toContain('New ');
   });
 
@@ -353,7 +368,7 @@ describe('re-reading the template', () => {
   it('falls back to the stored copy when the file cannot be read', async () => {
     await load();
     host.editTemplate(null);
-    await click('apply now');
+    await click('Apply Now');
     expect(header()).toContain('Team ');
   });
 });
@@ -369,28 +384,28 @@ describe('a document cardmirror never listed', () => {
   // the file is found
   it('says the file cannot be placed, not that it is the wrong kind', async () => {
     await host.run('laymirror.panel');
-    await click('turn on');
-    expect(host.said()).toContain('press locate');
-    expect(panel()!.textContent).toContain('lay formatting is off');
+    await click('Turn On');
+    expect(host.said()).toContain('press Locate');
+    expect(panel()!.textContent).toContain('Template formatting: off');
   });
 
   it('applies once the user has pointed at it', async () => {
     await host.run('laymirror.panel');
     host.pickNext({ name: '1ac.docx', bytes: new Uint8Array(), handle: PATH });
-    await click('locate…');
-    await click('turn on');
-    await click('load…');
-    await click('apply now');
+    await click('Locate…');
+    await click('Turn On');
+    await click('Load…');
+    await click('Apply Now');
     expect(readText(unzip(host.disk()), 'word/header1.xml')).toContain('Team ');
   });
 
   it('refuses a file that is not the open document', async () => {
     await host.run('laymirror.panel');
     host.pickNext({ name: 'somebody else.docx', bytes: new Uint8Array(), handle: '/x/y.docx' });
-    await click('locate…');
+    await click('Locate…');
     expect(host.said()).toContain('somebody else.docx');
-    await click('turn on');
-    expect(host.said()).toContain('press locate');
+    await click('Turn On');
+    expect(host.said()).toContain('press Locate');
   });
 });
 
@@ -399,8 +414,8 @@ describe('between documents and sessions', () => {
 
   const turnOnAndLoad = async () => {
     await host.run('laymirror.panel');
-    await click('turn on');
-    await click('load…');
+    await click('Turn On');
+    await click('Load…');
   };
 
   /** cardmirror opening another file: the chip is repainted and the history
@@ -422,7 +437,7 @@ describe('between documents and sessions', () => {
 
     openAnother();
     await host.run('laymirror.panel');
-    await click('turn on');
+    await click('Turn On');
     expect(panel()!.textContent).toContain('lay.docx');
   });
 
@@ -445,12 +460,12 @@ describe('between documents and sessions', () => {
   it('says so when the template will not fit in storage', async () => {
     const real = localStorage.setItem.bind(localStorage);
     await host.run('laymirror.panel');
-    await click('turn on');
+    await click('Turn On');
     localStorage.setItem = (key: string, value: string) => {
       if (key === 'plugin:laymirror' && value.includes('docx')) return;
       real(key, value);
     };
-    await click('load…');
+    await click('Load…');
     localStorage.setItem = real;
     expect(host.said()).toContain('too large');
   });
@@ -467,7 +482,7 @@ describe('between documents and sessions', () => {
       ]),
     );
     await host.run('laymirror.panel');
-    expect(panel()!.textContent).toContain('lay formatting is off');
+    expect(panel()!.textContent).toContain('Template formatting: off');
   });
 
   /** 2ac.docx as someone else's laymirror left it: marked with their template. */
@@ -490,8 +505,8 @@ describe('between documents and sessions', () => {
     markedWith('template:lay.docx');
     openAnother();
     await host.run('laymirror.panel');
-    await vi.waitFor(() => expect(host.said()).toContain('turn lay formatting on to keep it'));
-    expect(panel()!.textContent).toContain('lay formatting is off');
+    await vi.waitFor(() => expect(host.said()).toContain('turn template formatting on to keep it'));
+    expect(panel()!.textContent).toContain('Template formatting: off');
   });
 
   // or a teammate's file is restyled with whatever this machine loaded last
@@ -503,7 +518,7 @@ describe('between documents and sessions', () => {
     openAnother();
     await host.run('laymirror.panel');
     await vi.waitFor(() => expect(host.said()).toContain('not loaded here'));
-    await click('turn on');
+    await click('Turn On');
     expect(host.said()).toContain('load a template next');
   });
 
@@ -515,7 +530,7 @@ describe('between documents and sessions', () => {
 
     openAnother();
     await host.run('laymirror.panel');
-    expect(panel()!.textContent).toContain('lay formatting is off');
+    expect(panel()!.textContent).toContain('Template formatting: off');
   });
 });
 
@@ -527,8 +542,8 @@ describe('holding what is typed', () => {
 
   const typeInto = async (text: string): Promise<HTMLInputElement> => {
     await host.run('laymirror.panel');
-    await click('turn on');
-    await click('load…');
+    await click('Turn On');
+    await click('Load…');
     const input = panel()!.querySelector('input') as HTMLInputElement;
     input.value = text;
     input.dispatchEvent(new Event('input'));
